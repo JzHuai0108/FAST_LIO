@@ -8,8 +8,9 @@ common:
 preprocess:
     lidar_type: 1                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 
     scan_line: 4
-    blind: 0.5
+    blind: 1.2
 
+filter_size_map: 0.08
 mapping:
     acc_cov: 0.1
     gyr_cov: 0.1
@@ -22,6 +23,9 @@ mapping:
     extrinsic_R: [ 1, 0, 0,
                    0, 1, 0,
                    0, 0, 1]
+    init_world_t_imu: [-0.5, 0.4, 0.0]
+    init_world_rpy_imu: [0.0, 0.0, 0.2]
+
 
 publish:
     path_en:  false
