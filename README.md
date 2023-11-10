@@ -72,12 +72,12 @@ PCL    >= 1.8,   Follow [PCL Installation](http://www.pointclouds.org/downloads/
 
 Eigen  >= 3.3.4, Follow [Eigen Installation](http://eigen.tuxfamily.org/index.php?title=Main_Page).
 
-### 1.3. **livox_ros_driver**
-Follow [livox_ros_driver Installation](https://github.com/Livox-SDK/livox_ros_driver).
+### 1.3. **livox_ros_driver2**
+Follow [livox_ros_driver2 Installation](https://github.com/Livox-SDK/livox_ros_driver2).
 
 *Remarks:*
-- Since the FAST-LIO must support Livox serials LiDAR firstly, so the **livox_ros_driver** must be installed and **sourced** before run any FAST-LIO luanch file.
-- How to source? The easiest way is add the line ``` source $Livox_ros_driver_dir$/devel/setup.bash ``` to the end of file ``` ~/.bashrc ```, where ``` $Livox_ros_driver_dir$ ``` is the directory of the livox ros driver workspace (should be the ``` ws_livox ``` directory if you completely followed the livox official document).
+- Since the FAST-LIO must support Livox serials LiDAR firstly, so the **livox_ros_driver2** must be installed and **sourced** before run any FAST-LIO luanch file.
+- How to source? The easiest way is add the line ``` source $Livox_ros_driver2_dir$/devel/setup.bash ``` to the end of file ``` ~/.bashrc ```, where ``` $Livox_ros_driver2_dir$ ``` is the directory of the livox ros driver workspace (should be the ``` ws_livox ``` directory if you completely followed the livox official document).
 
 
 ## 2. Build
@@ -144,7 +144,7 @@ Clone the repository and catkin_make:
     catkin_make
     source devel/setup.bash
 ```
-- Remember to source the livox_ros_driver before build (follow 1.3 **livox_ros_driver**)
+- Remember to source the livox_ros_driver2 before build (follow 1.3 **livox_ros_driver2**)
 - If you want to use a custom build of PCL, add the following line to ~/.bashrc
 ```export PCL_ROOT={CUSTOM_PCL_PATH}```
 ## 3. Directly run
@@ -156,7 +156,7 @@ B. The warning message "Failed to find match for field 'time'." means the timest
 
 C. We recommend to set the **extrinsic_est_en** to false if the extrinsic is give. As for the extrinsic initiallization, please refer to our recent work: [**Robust Real-time LiDAR-inertial Initialization**](https://github.com/hku-mars/LiDAR_IMU_Init).
 
-### 3.1 For Avia
+### 3.1 For Avia (TODO: update this section for livox_ros_driver2)
 Connect to your PC to Livox Avia LiDAR by following  [Livox-ros-driver installation](https://github.com/Livox-SDK/livox_ros_driver), then
 ```
     cd ~/$FAST_LIO_ROS_DIR$
