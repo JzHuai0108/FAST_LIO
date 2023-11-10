@@ -119,6 +119,7 @@ pcl::VoxelGrid<PointType> downSizeFilterMap;
 KD_TREE<PointType> ikdtree;
 bool locmode = false;
 std::string pcdmap = "";
+std::string init_Rt_file = "";
 vector<double> init_world_t_imu(3, 0.0);
 vector<double> init_world_rpy_imu(3, 0.0);
 M3D init_world_R_imu(Eye3d);
@@ -154,16 +155,22 @@ void SigHandle(int sig)
 inline void dump_lio_state_to_log(FILE *fp)  
 {
     V3D rot_ang(Log(state_point.rot.toRotationMatrix()));
-    fprintf(fp, "%lf ", Measures.lidar_beg_time - first_lidar_time);
-    fprintf(fp, "%lf %lf %lf ", rot_ang(0), rot_ang(1), rot_ang(2));                   // Angle
-    fprintf(fp, "%lf %lf %lf ", state_point.pos(0), state_point.pos(1), state_point.pos(2)); // Pos  
-    fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // omega  
-    fprintf(fp, "%lf %lf %lf ", state_point.vel(0), state_point.vel(1), state_point.vel(2)); // Vel  
-    fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // Acc  
-    fprintf(fp, "%lf %lf %lf ", state_point.bg(0), state_point.bg(1), state_point.bg(2));    // Bias_g  
-    fprintf(fp, "%lf %lf %lf ", state_point.ba(0), state_point.ba(1), state_point.ba(2));    // Bias_a  
-    fprintf(fp, "%lf %lf %lf ", state_point.grav[0], state_point.grav[1], state_point.grav[2]); // Bias_a  
-    fprintf(fp, "\r\n");  
+    // fprintf(fp, "%lf ", Measures.lidar_beg_time - first_lidar_time);
+    // fprintf(fp, "%lf %lf %lf ", rot_ang(0), rot_ang(1), rot_ang(2));                   // Angle
+    // fprintf(fp, "%lf %lf %lf ", state_point.pos(0), state_point.pos(1), state_point.pos(2)); // Pos
+    // fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // omega
+    // fprintf(fp, "%lf %lf %lf ", state_point.vel(0), state_point.vel(1), state_point.vel(2)); // Vel
+    // fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // Acc
+    // fprintf(fp, "%lf %lf %lf ", state_point.bg(0), state_point.bg(1), state_point.bg(2));    // Bias_g
+    // fprintf(fp, "%lf %lf %lf ", state_point.ba(0), state_point.ba(1), state_point.ba(2));    // Bias_a
+    // fprintf(fp, "%lf %lf %lf ", state_point.grav[0], state_point.grav[1], state_point.grav[2]); // Bias_a
+    // fprintf(fp, "\r\n");
+    // fflush(fp);
+    fprintf(fp, "%lf ", Measures.lidar_beg_time);
+    fprintf(fp, "%lf %lf %lf ", state_point.pos(0), state_point.pos(1), state_point.pos(2)); // Pos
+    fprintf(fp, "%lf %lf %lf %lf", state_point.rot.coeffs()[0], state_point.rot.coeffs()[1],
+                                state_point.rot.coeffs()[2], state_point.rot.coeffs()[3]); // rot
+    fprintf(fp, "\r\n");
     fflush(fp);
 }
 
@@ -474,9 +481,32 @@ void map_incremental()
     kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
-void load_pcd_map() {
+void load_pcd_map(const std::vector<V3D>& TLS_positions, int &min_dis_id) {
+    // find the nearest position in the TLS map
+    int nearest_index = -1;
+    double min_distance = std::numeric_limits<double>::max();
+    for (int i = 0; i < TLS_positions.size(); i++)
+    {
+        double distance = (state_point.pos - TLS_positions[i]).norm();
+        if (distance < min_distance)
+        {
+            min_distance = distance;
+            nearest_index = i+1;
+        }
+    }
+    if (nearest_index == min_dis_id)
+    {
+        return;
+    }
+
+    std::cout << "~~~update TCL_PCD!" << std::endl;
+    min_dis_id = nearest_index;
+    std::cout << "~~~nearest_index: " << nearest_index << std::endl;
+    string pcdmap_path = pcdmap + "/" + std::to_string(nearest_index) + ".pcd";
+
+    // LOAD PCD MAP
     PointCloudXYZI::Ptr map(new PointCloudXYZI());
-    pcl::io::loadPCDFile<PointType>(pcdmap, *map);
+    pcl::io::loadPCDFile<PointType>(pcdmap_path, *map);
     downSizeFilterMap.setInputCloud(map);
     PointCloudXYZI::Ptr map_ds(new PointCloudXYZI());
     downSizeFilterMap.filter(*map_ds);
@@ -488,7 +518,7 @@ void load_pcd_map() {
     }
     ikdtree.Build(PointToAdd);
     ROS_INFO("Load pcd map of %zu points downsampled from %zu from %s.", 
-            PointToAdd.size(), map->points.size(), pcdmap.c_str());
+            PointToAdd.size(), map->points.size(), pcdmap_path.c_str());
 }
 
 PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI(500000, 1));
@@ -809,12 +839,34 @@ int main(int argc, char** argv)
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
     nh.param<bool>("locmode", locmode, false);
     nh.param<std::string>("pcdmap", pcdmap, "");
+    nh.param<std::string>("init_Rt_file", init_Rt_file, "");
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
     nh.param<vector<double>>("mapping/init_world_t_imu", init_world_t_imu, vector<double>());
     nh.param<vector<double>>("mapping/init_world_rpy_imu", init_world_rpy_imu, vector<double>());
+
+    // read init_world_Rt from file
+    std::cout << "pcdmap: " << pcdmap << std::endl;
+    std::cout << "init_Rt_file: " << init_Rt_file << std::endl;
+    if (!init_Rt_file.empty()){
+        std::cout << "path exists" << std::endl;
+        std::ifstream in(init_Rt_file);
+        if (in.is_open()){
+            double tx, ty, tz, roll, pitch, yaw;
+            in >> tx >> ty >> tz >> roll >> pitch >> yaw;
+            in.close();
+
+            init_world_t_imu = {tx, ty, tz};
+            init_world_rpy_imu = {roll, pitch, yaw};
+        }
+        else{
+            std::cerr << "Cannot open file: " << init_Rt_file << std::endl;
+        }
+    }
+
     init_world_R_imu = EulerToRotM(init_world_rpy_imu);
-    cout << "locmode?" << locmode << ", filter_size_map " << filter_size_map_min << std::endl;
+
+    cout << "locmode:" << locmode << ", filter_size_map " << filter_size_map_min << std::endl;
     cout << "init_world_t_imu: " << init_world_t_imu[0] << " " << init_world_t_imu[1] << " " << init_world_t_imu[2] << endl;
     cout << "init_world_rpy_imu: " << init_world_rpy_imu[0] << " " << init_world_rpy_imu[1] << " " << init_world_rpy_imu[2] << endl;
     cout << "init_world_R_imu: " << endl << init_world_R_imu << endl;
@@ -888,6 +940,33 @@ int main(int argc, char** argv)
     signal(SIGINT, SigHandle);
     ros::Rate rate(5000);
     bool status = ros::ok();
+     vector<V3D> TLS_positions;
+    int min_dis_id = -1;
+
+    // read tls transfroms
+    if (locmode) {
+        V3D position;
+        string tls_dir = pcdmap + "/pose.txt";
+        ifstream tls_file(tls_dir.c_str());
+        if (!tls_file.is_open()) {
+            cout << "~~~~" << tls_dir << " doesn't exist" << endl;
+            return 0;
+        }
+        string line;
+        while (getline(tls_file, line)) {
+            stringstream ss(line);
+            double temp;
+            for (int i = 0; i < 4; ++i) {
+                ss >> temp;
+                if (i == 0) continue;
+                position[i-1] = temp;
+            }
+            // std::cout << "~~~~" << position[0] << " " << position[1] << " " << position[2] << std::endl;
+            TLS_positions.push_back(position);
+        }
+        std::cout << " TLS_positions.size:" << TLS_positions.size() << std::endl;
+    }
+
     while (status)
     {
         if (flg_exit) break;
@@ -951,9 +1030,14 @@ int main(int argc, char** argv)
                     continue;
                 } else {
                     ikdtree.set_downsample_param(filter_size_map_min);
-                    load_pcd_map();
                 }
             }
+
+            // load map
+            if (locmode) {
+                load_pcd_map(TLS_positions, min_dis_id);
+            }
+
             int featsFromMapNum = ikdtree.validnum();
             kdtree_size_st = ikdtree.size();
             

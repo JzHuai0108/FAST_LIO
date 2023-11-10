@@ -6,12 +6,14 @@
 	<arg name="playbag" default="true" />
 	<arg name="pcdmap" default="" />
 	<arg name="locmode" default="false" />
+	<arg name="init_Rt_file" default="" />
 	<rosparam command="load" file="$(find fast_lio)/config/mid360.yaml" />
 
     <param name="locmode" type="bool" value="$(arg locmode)" />
 	<param name="pcdmap" type="string" value="$(arg pcdmap)" />
+	<param name="init_Rt_file" type="string" value="$(arg init_Rt_file)" />
 	<param name="feature_extract_enable" type="bool" value="0"/>
-	<param name="point_filter_num" type="int" value="3"/>
+	<param name="point_filter_num" type="int" value="20"/>
 	<param name="max_iteration" type="int" value="3" />
 	<param name="filter_size_surf" type="double" value="0.5" />
 	<param name="cube_side_length" type="double" value="1000" />
@@ -23,7 +25,7 @@
 	</group>
 
 	<group if="$(arg playbag)">
-	<node pkg="rosbag" type="play" name="bagplay" args="$(arg bagfile)" />
+	<node pkg="rosbag" type="play" name="bagplay" args="$(arg bagfile) -r 10" />
 	</group>
 
 </launch>
