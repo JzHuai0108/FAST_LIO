@@ -59,6 +59,7 @@
 #include <livox_ros_driver2/CustomMsg.h>
 #include "preprocess.h"
 #include <ikd-Tree/ikd_Tree.h>
+#include <fastlio/laserMapping.hpp>
 
 #define INIT_TIME           (0.1)
 #define LASER_POINT_COV     (0.001)
@@ -118,6 +119,7 @@ pcl::VoxelGrid<PointType> downSizeFilterMap;
 
 KD_TREE<PointType> ikdtree;
 bool locmode = false;
+bool showmap = false;
 std::string pcdmap = "";
 vector<double> init_world_t_imu(3, 0.0);
 vector<double> init_world_rpy_imu(3, 0.0);
@@ -771,7 +773,11 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     solve_time += omp_get_wtime() - solve_start_;
 }
 
-int main(int argc, char** argv)
+namespace fastlio {
+LaserMapping::LaserMapping() {
+}
+
+int LaserMapping::run(int argc, char** argv)
 {
     ros::init(argc, argv, "laserMapping");
     ros::NodeHandle nh;
@@ -808,6 +814,7 @@ int main(int argc, char** argv)
     nh.param<bool>("pcd_save/pcd_save_en", pcd_save_en, false);
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
     nh.param<bool>("locmode", locmode, false);
+    nh.param<bool>("showmap", showmap, false);
     nh.param<std::string>("pcdmap", pcdmap, "");
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
@@ -973,7 +980,7 @@ int main(int argc, char** argv)
             fout_pre<<setw(20)<<Measures.lidar_beg_time - first_lidar_time<<" "<<euler_cur.transpose()<<" "<< state_point.pos.transpose()<<" "<<ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<< " " << state_point.vel.transpose() \
             <<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<< endl;
 
-            if (1) // If you need to visualize the map, change to "if(1)"
+            if (showmap) // If you need to visualize the map, change to "if(1)"
             {  // This can drastically slow down the program.
                 PointVector ().swap(ikdtree.PCL_Storage);
                 ikdtree.flatten(ikdtree.Root_Node, ikdtree.PCL_Storage, NOT_RECORD);
@@ -1088,3 +1095,4 @@ int main(int argc, char** argv)
 
     return 0;
 }
+} // namespace fast_lio
