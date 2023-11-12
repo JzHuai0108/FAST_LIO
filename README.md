@@ -141,7 +141,7 @@ Clone the repository and catkin_make:
     cd FAST_LIO
     git submodule update --init
     cd ../..
-    catkin_make
+    catkin build
     source devel/setup.bash
 ```
 - Remember to source the livox_ros_driver2 before build (follow 1.3 **livox_ros_driver2**)

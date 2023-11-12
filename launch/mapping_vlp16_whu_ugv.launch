@@ -3,9 +3,17 @@
   Though the sequences does not have the time field for points, the fastlio package can make up for it. -->
 
     <arg name="rviz" default="true" />
+    <arg name="bagfile" default="" />
+    <arg name="playbag" default="true" />
+    <arg name="mapdir" default="" />
+    <arg name="locmode" default="false" />
+    <arg name="init_lidar_pose_file" default="" />
     <arg name="save_directory" default="$(find fast_lio)/Log" />
     <rosparam command="load" file="$(find fast_lio)/config/vlp16_whu_ugv.yaml" />
 
+    <param name="locmode" type="bool" value="$(arg locmode)" />
+    <param name="mapdir" type="string" value="$(arg mapdir)" />
+    <param name="init_lidar_pose_file" type="string" value="$(arg init_lidar_pose_file)" />
     <param name="feature_extract_enable" type="bool" value="0"/>
     <param name="point_filter_num" type="int" value="4"/>
     <param name="max_iteration" type="int" value="4" />

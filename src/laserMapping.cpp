@@ -120,9 +120,11 @@ pcl::VoxelGrid<PointType> downSizeFilterMap;
 
 KD_TREE<PointType> ikdtree;
 bool locmode = false;
-std::string pcdmap = "";
+std::string mapdir = "";
+std::string init_lidar_pose_file = "";
 vector<double> init_world_t_imu(3, 0.0);
 vector<double> init_world_rpy_imu(3, 0.0);
+V3D init_world_t_imu_vec(Zero3d);
 M3D init_world_R_imu(Eye3d);
 
 V3F XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);
@@ -466,9 +468,32 @@ void map_incremental()
     kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
-void load_pcd_map() {
+void load_pcd_map(const std::vector<V3D>& TLS_positions, int &min_dis_id) {
+    // find the nearest position in the TLS map
+    int nearest_index = -1;
+    double min_distance = std::numeric_limits<double>::max();
+    for (int i = 0; i < TLS_positions.size(); i++)
+    {
+        double distance = (state_point.pos - TLS_positions[i]).norm();
+        if (distance < min_distance)
+        {
+            min_distance = distance;
+            nearest_index = i+1;
+        }
+    }
+    if (nearest_index == min_dis_id)
+    {
+        return;
+    }
+
+    std::cout << "~~~update TCL_PCD!" << std::endl;
+    min_dis_id = nearest_index;
+    std::cout << "~~~nearest_index: " << nearest_index << std::endl;
+    string map_filename = mapdir + "/" + std::to_string(nearest_index) + ".pcd";
+
+    // LOAD PCD MAP
     PointCloudXYZI::Ptr map(new PointCloudXYZI());
-    pcl::io::loadPCDFile<PointType>(pcdmap, *map);
+    pcl::io::loadPCDFile<PointType>(map_filename, *map);
     downSizeFilterMap.setInputCloud(map);
     PointCloudXYZI::Ptr map_ds(new PointCloudXYZI());
     downSizeFilterMap.filter(*map_ds);
@@ -480,7 +505,7 @@ void load_pcd_map() {
     }
     ikdtree.Build(PointToAdd);
     ROS_INFO("Load pcd map of %zu points downsampled from %zu from %s.", 
-            PointToAdd.size(), map->points.size(), pcdmap.c_str());
+            PointToAdd.size(), map->points.size(), map_filename.c_str());
 }
 
 PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI(500000, 1));
@@ -793,6 +818,53 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     solve_time += omp_get_wtime() - solve_start_;
 }
 
+bool load_initial_lidar_pose(const std::string &init_lidar_pose_file, V3D &world_t_lidar, M3D &world_R_lidar) {
+    if (!init_lidar_pose_file.empty()) {
+        std::ifstream in(init_lidar_pose_file);
+        if (in.is_open()){
+            double val[12];
+            for (int i = 0; i < 12; ++i) {
+                in >> val[i];
+            }
+            in.close();
+            world_t_lidar = V3D(val[3], val[7], val[11]);
+            world_R_lidar << val[0], val[1], val[2],
+                             val[4], val[5], val[6],
+                             val[8], val[9], val[10];
+            return true;
+        }
+        else{
+            std::cerr << "Cannot open file: " << init_lidar_pose_file << std::endl;
+            return false;
+        }
+    }
+    return false;
+}
+
+size_t load_submap_poses(const std::string &mapdir, std::vector<V3D> &TLS_positions) {
+    V3D position;
+    string tls_dir = mapdir + "/pose.txt";
+    ifstream tls_file(tls_dir.c_str());
+    if (!tls_file.is_open()) {
+        cout << "~~~~" << tls_dir << " doesn't exist" << endl;
+        return 0;
+    }
+    string line;
+    while (getline(tls_file, line)) {
+        stringstream ss(line);
+        double temp;
+        for (int i = 0; i < 4; ++i) {
+            ss >> temp;
+            if (i == 0) continue;
+            position[i-1] = temp;
+        }
+        // std::cout << "~~~~" << position[0] << " " << position[1] << " " << position[2] << std::endl;
+        TLS_positions.push_back(position);
+    }
+    std::cout << " TLS_positions.size:" << TLS_positions.size() << std::endl;
+    return TLS_positions.size();
+}
+
 int main(int argc, char** argv)
 {
     ros::init(argc, argv, "laserMapping");
@@ -831,13 +903,15 @@ int main(int argc, char** argv)
     nh.param<bool>("publish/publish_cloud_in_imu_frame", publish_cloud_in_imu_frame, true);
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
     nh.param<bool>("locmode", locmode, false);
-    nh.param<std::string>("pcdmap", pcdmap, "");
+    nh.param<std::string>("mapdir", mapdir, "");
+    nh.param<std::string>("init_lidar_pose_file", init_lidar_pose_file, "");
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
     nh.param<double>("mapping/gravity_m_s2", p_imu->G_m_s2, 9.81);
     nh.param<string>("save_directory", state_log_dir, "");
     nh.param<vector<double>>("mapping/init_world_t_imu", init_world_t_imu, vector<double>());
     nh.param<vector<double>>("mapping/init_world_rpy_imu", init_world_rpy_imu, vector<double>());
+    init_world_t_imu_vec = V3D(init_world_t_imu[0], init_world_t_imu[1], init_world_t_imu[2]);
     init_world_R_imu = EulerToRotM(init_world_rpy_imu);
     cout << "locmode?" << locmode << ", filter_size_map " << filter_size_map_min << std::endl;
     cout << "init_world_t_imu: " << init_world_t_imu[0] << " " << init_world_t_imu[1] << " " << init_world_t_imu[2] << endl;
@@ -920,6 +994,20 @@ int main(int argc, char** argv)
     signal(SIGINT, SigHandle);
     ros::Rate rate(5000);
     bool status = ros::ok();
+
+    vector<V3D> TLS_positions;
+    int min_dis_id = -1;
+    if (locmode) {
+        std::cout << "mapdir: " << mapdir << std::endl;
+        load_submap_poses(mapdir, TLS_positions);
+        std::cout << "init_lidar_pose_file: " << init_lidar_pose_file << std::endl;
+        V3D init_w_t_lidar;
+        M3D init_w_R_lidar;
+        load_initial_lidar_pose(init_lidar_pose_file, init_w_t_lidar, init_w_R_lidar);
+        init_world_R_imu = init_w_R_lidar * Lidar_R_wrt_IMU.transpose();
+        init_world_t_imu_vec = init_w_t_lidar - init_world_R_imu * Lidar_T_wrt_IMU;
+    }
+
     while (status)
     {
         if (flg_exit) break;
@@ -931,7 +1019,7 @@ int main(int argc, char** argv)
                 first_lidar_time = Measures.lidar_beg_time;
                 p_imu->first_lidar_time = first_lidar_time;
                 if (locmode) {
-                    p_imu->set_init_pose(V3D(init_world_t_imu[0], init_world_t_imu[1], init_world_t_imu[2]), init_world_R_imu);
+                    p_imu->set_init_pose(init_world_t_imu_vec, init_world_R_imu);
                 }
                 flg_first_scan = false;
                 continue;
@@ -981,10 +1069,11 @@ int main(int argc, char** argv)
                         ikdtree.Build(feats_down_world->points);
                     }
                     continue;
-                } else {
-                    ikdtree.set_downsample_param(filter_size_map_min);
-                    load_pcd_map();
                 }
+            }
+            if (locmode) {
+                ikdtree.set_downsample_param(filter_size_map_min);
+                load_pcd_map(TLS_positions, min_dis_id);
             }
             int featsFromMapNum = ikdtree.validnum();
             kdtree_size_st = ikdtree.size();
