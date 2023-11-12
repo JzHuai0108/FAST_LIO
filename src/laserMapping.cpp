@@ -71,6 +71,7 @@ double T1[MAXN], s_plot[MAXN], s_plot2[MAXN], s_plot3[MAXN], s_plot4[MAXN], s_pl
 double match_time = 0, solve_time = 0, solve_const_H_time = 0;
 int    kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0, kdtree_delete_counter = 0;
 bool   runtime_pos_log = false, pcd_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true;
+bool publish_cloud_in_imu_frame = true;
 /**************************/
 
 float res_last[100000] = {0.0};
@@ -83,6 +84,7 @@ condition_variable sig_buffer;
 
 string root_dir = ROOT_DIR;
 string map_file_path, lid_topic, imu_topic;
+string state_log_dir;
 
 double res_mean_last = 0.05, total_residual = 0.0;
 double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
@@ -151,38 +153,28 @@ void SigHandle(int sig)
     sig_buffer.notify_all();
 }
 
-inline void dump_lio_state_to_log(FILE *fp)  
+inline void dump_lio_state_to_log(double lidar_end_time, const state_ikfom& state_point, FILE *fp)  
 {
-    V3D rot_ang(Log(state_point.rot.toRotationMatrix()));
-    fprintf(fp, "%lf ", Measures.lidar_beg_time - first_lidar_time);
-    fprintf(fp, "%lf %lf %lf ", rot_ang(0), rot_ang(1), rot_ang(2));                   // Angle
-    fprintf(fp, "%lf %lf %lf ", state_point.pos(0), state_point.pos(1), state_point.pos(2)); // Pos  
-    fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // omega  
-    fprintf(fp, "%lf %lf %lf ", state_point.vel(0), state_point.vel(1), state_point.vel(2)); // Vel  
-    fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // Acc  
-    fprintf(fp, "%lf %lf %lf ", state_point.bg(0), state_point.bg(1), state_point.bg(2));    // Bias_g  
-    fprintf(fp, "%lf %lf %lf ", state_point.ba(0), state_point.ba(1), state_point.ba(2));    // Bias_a  
-    fprintf(fp, "%lf %lf %lf ", state_point.grav[0], state_point.grav[1], state_point.grav[2]); // Bias_a  
-    fprintf(fp, "\r\n");  
-    fflush(fp);
+    // V3D rot_ang(Log(state_point.rot.toRotationMatrix()));
+    fprintf(fp, "%.9lf ", lidar_end_time);
+    // fprintf(fp, "%lf %lf %lf ", rot_ang(0), rot_ang(1), rot_ang(2));                   // Angle
+    fprintf(fp, "%.6lf %.6lf %.6lf ", state_point.pos(0), state_point.pos(1), state_point.pos(2)); // Pos  
+    fprintf(fp, "%.9lf %.9lf %.9lf %.9lf ", state_point.rot.coeffs()[0], state_point.rot.coeffs()[1], state_point.rot.coeffs()[2], state_point.rot.coeffs()[3]);                                        // omega  
+    fprintf(fp, "%.6lf %.6lf %.6lf ", state_point.vel(0), state_point.vel(1), state_point.vel(2)); // Vel  
+    // fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // Acc  
+    fprintf(fp, "%.6lf %.6lf %.6lf ", state_point.bg(0), state_point.bg(1), state_point.bg(2));    // Bias_g  
+    fprintf(fp, "%.6lf %.6lf %.6lf ", state_point.ba(0), state_point.ba(1), state_point.ba(2));    // Bias_a  
+    fprintf(fp, "%.6lf %.6lf %.6lf ", state_point.grav[0], state_point.grav[1], state_point.grav[2]); // gravity in world 
+    fprintf(fp, "%.6lf %.6lf %.6lf ", state_point.offset_T_L_I(0), state_point.offset_T_L_I(1), state_point.offset_T_L_I(2));
+    fprintf(fp, "%.9lf %.9lf %.9lf %.9lf ", state_point.offset_R_L_I.coeffs()[0], state_point.offset_R_L_I.coeffs()[1], state_point.offset_R_L_I.coeffs()[2], state_point.offset_R_L_I.coeffs()[3]);
+    fprintf(fp, "\n");
+    // fflush(fp);
 }
-
-void pointBodyToWorld_ikfom(PointType const * const pi, PointType * const po, state_ikfom &s)
-{
-    V3D p_body(pi->x, pi->y, pi->z);
-    V3D p_global(s.rot * (s.offset_R_L_I*p_body + s.offset_T_L_I) + s.pos);
-
-    po->x = p_global(0);
-    po->y = p_global(1);
-    po->z = p_global(2);
-    po->intensity = pi->intensity;
-}
-
 
 void pointBodyToWorld(PointType const * const pi, PointType * const po)
 {
-    V3D p_body(pi->x, pi->y, pi->z);
-    V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_body + state_point.offset_T_L_I) + state_point.pos);
+    V3D p_lidar(pi->x, pi->y, pi->z);
+    V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_lidar + state_point.offset_T_L_I) + state_point.pos);
 
     po->x = p_global(0);
     po->y = p_global(1);
@@ -193,8 +185,8 @@ void pointBodyToWorld(PointType const * const pi, PointType * const po)
 template<typename T>
 void pointBodyToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po)
 {
-    V3D p_body(pi[0], pi[1], pi[2]);
-    V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_body + state_point.offset_T_L_I) + state_point.pos);
+    V3D p_lidar(pi[0], pi[1], pi[2]);
+    V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_lidar + state_point.offset_T_L_I) + state_point.pos);
 
     po[0] = p_global(0);
     po[1] = p_global(1);
@@ -203,8 +195,8 @@ void pointBodyToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po)
 
 void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
 {
-    V3D p_body(pi->x, pi->y, pi->z);
-    V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_body + state_point.offset_T_L_I) + state_point.pos);
+    V3D p_lidar(pi->x, pi->y, pi->z);
+    V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_lidar + state_point.offset_T_L_I) + state_point.pos);
 
     po->x = p_global(0);
     po->y = p_global(1);
@@ -214,12 +206,12 @@ void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
 
 void RGBpointBodyLidarToIMU(PointType const * const pi, PointType * const po)
 {
-    V3D p_body_lidar(pi->x, pi->y, pi->z);
-    V3D p_body_imu(state_point.offset_R_L_I*p_body_lidar + state_point.offset_T_L_I);
+    V3D p_lidar(pi->x, pi->y, pi->z);
+    V3D p_imu(state_point.offset_R_L_I*p_lidar + state_point.offset_T_L_I);
 
-    po->x = p_body_imu(0);
-    po->y = p_body_imu(1);
-    po->z = p_body_imu(2);
+    po->x = p_imu(0);
+    po->y = p_imu(1);
+    po->z = p_imu(2);
     po->intensity = pi->intensity;
 }
 
@@ -524,22 +516,36 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
         int size = feats_undistort->points.size();
         PointCloudXYZI::Ptr laserCloudWorld( \
                         new PointCloudXYZI(size, 1));
-
-        for (int i = 0; i < size; i++)
-        {
-            RGBpointBodyToWorld(&feats_undistort->points[i], \
-                                &laserCloudWorld->points[i]);
+        if (pcd_save_interval == 1) {
+            for (int i = 0; i < size; i++) {
+                // save the pointcloud in the local IMU frame.
+                Matrix<double, 3, 1> temp;
+                temp(0) = feats_undistort->points[i].x;
+                temp(1) = feats_undistort->points[i].y;
+                temp(2) = feats_undistort->points[i].z;
+                temp = state_point.offset_R_L_I*temp + state_point.offset_T_L_I;
+                laserCloudWorld->points[i].x = temp(0);
+                laserCloudWorld->points[i].y = temp(1);
+                laserCloudWorld->points[i].z = temp(2);
+                laserCloudWorld->points[i].intensity = feats_undistort->points[i].intensity;
+            }
+            *pcl_wait_save = *laserCloudWorld;
+        } else {
+            for (int i = 0; i < size; i++) {
+                RGBpointBodyToWorld(&feats_undistort->points[i], \
+                                    &laserCloudWorld->points[i]);
+            }
+            *pcl_wait_save += *laserCloudWorld;
         }
-        *pcl_wait_save += *laserCloudWorld;
 
         static int scan_wait_num = 0;
         scan_wait_num ++;
         if (pcl_wait_save->size() > 0 && pcd_save_interval > 0  && scan_wait_num >= pcd_save_interval)
         {
             pcd_index ++;
-            string all_points_dir(string(string(ROOT_DIR) + "PCD/scans_") + to_string(pcd_index) + string(".pcd"));
+            string all_points_dir(string(state_log_dir + "/PCD/scans_") + to_string(pcd_index) + string(".pcd"));
             pcl::PCDWriter pcd_writer;
-            cout << "current scan saved to /PCD/" << all_points_dir << endl;
+            cout << "current scan saved to " << all_points_dir << endl;
             pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
             pcl_wait_save->clear();
             scan_wait_num = 0;
@@ -550,16 +556,20 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
 void publish_frame_body(const ros::Publisher & pubLaserCloudFull_body)
 {
     int size = feats_undistort->points.size();
-    PointCloudXYZI::Ptr laserCloudIMUBody(new PointCloudXYZI(size, 1));
+    sensor_msgs::PointCloud2 laserCloudmsg;
+    if (publish_cloud_in_imu_frame) {
+        PointCloudXYZI::Ptr laserCloudIMUBody(new PointCloudXYZI(size, 1));
 
-    for (int i = 0; i < size; i++)
-    {
-        RGBpointBodyLidarToIMU(&feats_undistort->points[i], \
-                            &laserCloudIMUBody->points[i]);
+        for (int i = 0; i < size; i++)
+        {
+            RGBpointBodyLidarToIMU(&feats_undistort->points[i], \
+                                &laserCloudIMUBody->points[i]);
+        }
+        pcl::toROSMsg(*laserCloudIMUBody, laserCloudmsg);
+    } else {
+        pcl::toROSMsg(*feats_undistort, laserCloudmsg);
     }
 
-    sensor_msgs::PointCloud2 laserCloudmsg;
-    pcl::toROSMsg(*laserCloudIMUBody, laserCloudmsg);
     laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
     laserCloudmsg.header.frame_id = "body";
     pubLaserCloudFull_body.publish(laserCloudmsg);
@@ -609,7 +619,19 @@ void publish_odometry(const ros::Publisher & pubOdomAftMapped)
     odomAftMapped.header.frame_id = "camera_init";
     odomAftMapped.child_frame_id = "body";
     odomAftMapped.header.stamp = ros::Time().fromSec(lidar_end_time);// ros::Time().fromSec(lidar_end_time);
-    set_posestamp(odomAftMapped.pose);
+    if (publish_cloud_in_imu_frame)
+        set_posestamp(odomAftMapped.pose);
+    else {
+        SO3 odom_R_lidar = state_point.rot * state_point.offset_R_L_I;
+        V3D odom_t_lidar = state_point.pos + state_point.rot * state_point.offset_T_L_I;
+        odomAftMapped.pose.pose.position.x = odom_t_lidar[0];
+        odomAftMapped.pose.pose.position.y = odom_t_lidar[1];
+        odomAftMapped.pose.pose.position.z = odom_t_lidar[2];
+        odomAftMapped.pose.pose.orientation.x = odom_R_lidar.coeffs()[0];
+        odomAftMapped.pose.pose.orientation.y = odom_R_lidar.coeffs()[1];
+        odomAftMapped.pose.pose.orientation.z = odom_R_lidar.coeffs()[2];
+        odomAftMapped.pose.pose.orientation.w = odom_R_lidar.coeffs()[3];
+    }
     pubOdomAftMapped.publish(odomAftMapped);
     auto P = kf.get_P();
     for (int i = 0; i < 6; i ++)
@@ -806,11 +828,14 @@ int main(int argc, char** argv)
     nh.param<bool>("runtime_pos_log_enable", runtime_pos_log, 0);
     nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est_en, true);
     nh.param<bool>("pcd_save/pcd_save_en", pcd_save_en, false);
+    nh.param<bool>("publish/publish_cloud_in_imu_frame", publish_cloud_in_imu_frame, true);
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
     nh.param<bool>("locmode", locmode, false);
     nh.param<std::string>("pcdmap", pcdmap, "");
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
+    nh.param<double>("mapping/gravity_m_s2", p_imu->G_m_s2, 9.81);
+    nh.param<string>("save_directory", state_log_dir, "");
     nh.param<vector<double>>("mapping/init_world_t_imu", init_world_t_imu, vector<double>());
     nh.param<vector<double>>("mapping/init_world_rpy_imu", init_world_rpy_imu, vector<double>());
     init_world_R_imu = EulerToRotM(init_world_rpy_imu);
@@ -818,9 +843,12 @@ int main(int argc, char** argv)
     cout << "init_world_t_imu: " << init_world_t_imu[0] << " " << init_world_t_imu[1] << " " << init_world_t_imu[2] << endl;
     cout << "init_world_rpy_imu: " << init_world_rpy_imu[0] << " " << init_world_rpy_imu[1] << " " << init_world_rpy_imu[2] << endl;
     cout << "init_world_R_imu: " << endl << init_world_R_imu << endl;
-
     cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
-
+    if (state_log_dir.empty()) {
+      cerr << "You have to provide save_directory to make the saving functions work properly." << std::endl;
+      return 0;
+    }
+    cout << "state log dir: " << state_log_dir << endl;
     path.header.stamp    = ros::Time::now();
     path.header.frame_id ="camera_init";
 
@@ -854,9 +882,13 @@ int main(int argc, char** argv)
     kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS, epsi);
 
     /*** debug record ***/
-    FILE *fp;
-    string pos_log_dir = root_dir + "/Log/pos_log.txt";
-    fp = fopen(pos_log_dir.c_str(),"w");
+    FILE *fp = NULL;
+    string pos_log_filename = state_log_dir + "/scan_states.txt";
+    fp = fopen(pos_log_filename.c_str(),"w");
+    if (fp == NULL) {
+        std::cout << "Failed to create state file " << pos_log_filename << "." << std::endl;
+        exit(1);
+    }
 
     ofstream fout_pre, fout_out, fout_dbg;
     fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"),ios::out);
@@ -973,8 +1005,8 @@ int main(int argc, char** argv)
             fout_pre<<setw(20)<<Measures.lidar_beg_time - first_lidar_time<<" "<<euler_cur.transpose()<<" "<< state_point.pos.transpose()<<" "<<ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<< " " << state_point.vel.transpose() \
             <<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<< endl;
 
-            if (1) // If you need to visualize the map, change to "if(1)"
-            {  // This can drastically slow down the program.
+            if(0) // If you need to see map point, change to "if(1)"
+            { // This can drastically slow down the program.
                 PointVector ().swap(ikdtree.PCL_Storage);
                 ikdtree.flatten(ikdtree.Root_Node, ikdtree.PCL_Storage, NOT_RECORD);
                 featsFromMap->clear();
@@ -1045,8 +1077,8 @@ int main(int argc, char** argv)
                 ext_euler = SO3ToEuler(state_point.offset_R_L_I);
                 fout_out << setw(20) << Measures.lidar_beg_time - first_lidar_time << " " << euler_cur.transpose() << " " << state_point.pos.transpose()<< " " << ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<<" "<< state_point.vel.transpose() \
                 <<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<<" "<<feats_undistort->points.size()<<endl;
-                dump_lio_state_to_log(fp);
             }
+            dump_lio_state_to_log(lidar_end_time, state_point, fp);
         }
 
         status = ros::ok();
@@ -1059,20 +1091,21 @@ int main(int argc, char** argv)
     if (pcl_wait_save->size() > 0 && pcd_save_en)
     {
         string file_name = string("scans.pcd");
-        string all_points_dir(string(string(ROOT_DIR) + "PCD/") + file_name);
+        string all_points_dir(string(state_log_dir + "/") + file_name);
         pcl::PCDWriter pcd_writer;
-        cout << "current scan saved to /PCD/" << file_name<<endl;
+        cout << "current scan saved to " << all_points_dir <<endl;
         pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
     }
 
     fout_out.close();
     fout_pre.close();
-
+    if (fp)
+      fclose(fp);
     if (runtime_pos_log)
     {
         vector<double> t, s_vec, s_vec2, s_vec3, s_vec4, s_vec5, s_vec6, s_vec7;    
         FILE *fp2;
-        string log_dir = root_dir + "/Log/fast_lio_time_log.csv";
+        string log_dir = state_log_dir + "/Log/fast_lio_time_log.csv";
         fp2 = fopen(log_dir.c_str(),"w");
         fprintf(fp2,"time_stamp, total time, scan point size, incremental time, search time, delete size, delete time, tree size st, tree size end, add point size, preprocess time\n");
         for (int i = 0;i<time_log_counter; i++){
