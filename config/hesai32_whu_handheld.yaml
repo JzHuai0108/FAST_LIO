@@ -1,6 +1,6 @@
 common:
     lid_topic:  "/hesai/pandar"  # for hiltislam2022 datasets
-    imu_topic:  "/zed/zed_node/imu/data"
+    imu_topic:  "/zed2i/zed_node/imu/data"
     time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
     time_offset_lidar_to_imu: 0.00176257  # lidar clock for lidar messages + time_offset_lidar_to_imu == imu clock for imu messages.
 
