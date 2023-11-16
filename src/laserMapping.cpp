@@ -120,6 +120,7 @@ pcl::VoxelGrid<PointType> downSizeFilterMap;
 
 KD_TREE<PointType> ikdtree;
 bool locmode = false;
+bool load_multi_pcdmap = false;
 std::string mapdir = "";
 std::string init_lidar_pose_file = "";
 vector<double> init_world_t_imu(3, 0.0);
@@ -468,7 +469,7 @@ void map_incremental()
     kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
-void load_pcd_map(const std::vector<V3D>& TLS_positions, int &min_dis_id) {
+void load_pcd_map(const std::vector<V3D>& TLS_positions, int &min_dis_id, bool &load_multi_pcdmap) {
     // find the nearest position in the TLS map
     int nearest_index = -1;
     double min_distance = std::numeric_limits<double>::max();
@@ -481,20 +482,49 @@ void load_pcd_map(const std::vector<V3D>& TLS_positions, int &min_dis_id) {
             nearest_index = i+1;
         }
     }
-    if (nearest_index == min_dis_id)
-    {
+
+    if (nearest_index == min_dis_id){
         return;
     }
 
     std::cout << "~~~update TCL_PCD!" << std::endl;
     min_dis_id = nearest_index;
     std::cout << "~~~nearest_index: " << nearest_index << std::endl;
-    string map_filename = mapdir + "/" + std::to_string(nearest_index) + ".pcd";
 
+    std::string map_filename;
+    PointCloudXYZI::Ptr TCL_submap(new PointCloudXYZI());
     // LOAD PCD MAP
-    PointCloudXYZI::Ptr map(new PointCloudXYZI());
-    pcl::io::loadPCDFile<PointType>(map_filename, *map);
-    downSizeFilterMap.setInputCloud(map);
+    if (load_multi_pcdmap){
+        int count = 0;
+        for (int i = nearest_index - 1; i <= nearest_index + 1; i++){
+            if (i < 1 || i > TLS_positions.size()){
+                continue;
+            }
+            if (mapdir.find("project1") != std::string::npos){
+                map_filename = mapdir + "/" + std::to_string(i) + ".pcd";
+            }
+            else{
+                map_filename = mapdir + "/" + std::to_string(i) + "_uniform.pcd";
+            }
+            PointCloudXYZI::Ptr map(new PointCloudXYZI());
+            pcl::io::loadPCDFile<PointType>(map_filename, *map);
+            *TCL_submap += *map;
+            count++;
+        }
+        ROS_INFO("Load %zu pcd maps from %s and adjacent frames.", count, map_filename.c_str());
+    }
+    else{
+        if (mapdir.find("project1") != std::string::npos){
+            map_filename = mapdir + "/" + std::to_string(nearest_index) + ".pcd";
+        }
+        else{
+            map_filename = mapdir + "/" + std::to_string(nearest_index) + "_uniform.pcd";
+        }
+        pcl::io::loadPCDFile<PointType>(map_filename, *TCL_submap);
+        ROS_INFO("Load a pcd map from %s.", map_filename.c_str());
+    }
+
+    downSizeFilterMap.setInputCloud(TCL_submap);
     PointCloudXYZI::Ptr map_ds(new PointCloudXYZI());
     downSizeFilterMap.filter(*map_ds);
     PointVector PointToAdd;
@@ -504,8 +534,7 @@ void load_pcd_map(const std::vector<V3D>& TLS_positions, int &min_dis_id) {
         PointToAdd.push_back(map_ds->points[i]);
     }
     ikdtree.Build(PointToAdd);
-    ROS_INFO("Load pcd map of %zu points downsampled from %zu from %s.", 
-            PointToAdd.size(), map->points.size(), map_filename.c_str());
+    ROS_INFO("The pcd map of %zu points downsampled from %zu.", PointToAdd.size(), TCL_submap->points.size());
 }
 
 PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI(500000, 1));
@@ -843,7 +872,7 @@ bool load_initial_lidar_pose(const std::string &init_lidar_pose_file, V3D &world
 
 size_t load_submap_poses(const std::string &mapdir, std::vector<V3D> &TLS_positions) {
     V3D position;
-    string tls_dir = mapdir + "/pose.txt";
+    string tls_dir = mapdir + "/centers.txt";
     ifstream tls_file(tls_dir.c_str());
     if (!tls_file.is_open()) {
         cout << "~~~~" << tls_dir << " doesn't exist" << endl;
@@ -903,6 +932,7 @@ int main(int argc, char** argv)
     nh.param<bool>("publish/publish_cloud_in_imu_frame", publish_cloud_in_imu_frame, true);
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
     nh.param<bool>("locmode", locmode, false);
+    nh.param<bool>("load_multi_pcdmap", load_multi_pcdmap, false);
     nh.param<std::string>("mapdir", mapdir, "");
     nh.param<std::string>("init_lidar_pose_file", init_lidar_pose_file, "");
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
@@ -1007,6 +1037,8 @@ int main(int argc, char** argv)
         init_world_R_imu = init_w_R_lidar * Lidar_R_wrt_IMU.transpose();
         init_world_t_imu_vec = init_w_t_lidar - init_world_R_imu * Lidar_T_wrt_IMU;
     }
+    cout << "~~~init_world_t_imu: " <<  init_world_t_imu_vec << endl;
+    cout << "~~~init_world_R_imu: " << endl << init_world_R_imu << endl;
 
     while (status)
     {
@@ -1073,7 +1105,7 @@ int main(int argc, char** argv)
             }
             if (locmode) {
                 ikdtree.set_downsample_param(filter_size_map_min);
-                load_pcd_map(TLS_positions, min_dis_id);
+                load_pcd_map(TLS_positions, min_dis_id, load_multi_pcdmap);
             }
             int featsFromMapNum = ikdtree.validnum();
             kdtree_size_st = ikdtree.size();
@@ -1094,7 +1126,7 @@ int main(int argc, char** argv)
             fout_pre<<setw(20)<<Measures.lidar_beg_time - first_lidar_time<<" "<<euler_cur.transpose()<<" "<< state_point.pos.transpose()<<" "<<ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<< " " << state_point.vel.transpose() \
             <<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<< endl;
 
-            if(0) // If you need to see map point, change to "if(1)"
+            if(1) // If you need to see map point, change to "if(1)"
             { // This can drastically slow down the program.
                 PointVector ().swap(ikdtree.PCL_Storage);
                 ikdtree.flatten(ikdtree.Root_Node, ikdtree.PCL_Storage, NOT_RECORD);

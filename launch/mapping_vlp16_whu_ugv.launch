@@ -7,11 +7,13 @@
     <arg name="playbag" default="true" />
     <arg name="mapdir" default="" />
     <arg name="locmode" default="false" />
+    <arg name="load_multi_pcdmap" default="false" />
     <arg name="init_lidar_pose_file" default="" />
     <arg name="save_directory" default="$(find fast_lio)/Log" />
     <rosparam command="load" file="$(find fast_lio)/config/vlp16_whu_ugv.yaml" />
 
     <param name="locmode" type="bool" value="$(arg locmode)" />
+    <param name="load_multi_pcdmap" type="bool" value="$(arg load_multi_pcdmap)" />
     <param name="mapdir" type="string" value="$(arg mapdir)" />
     <param name="init_lidar_pose_file" type="string" value="$(arg init_lidar_pose_file)" />
     <param name="feature_extract_enable" type="bool" value="0"/>
@@ -26,6 +28,10 @@
 
     <group if="$(arg rviz)">
     <node launch-prefix="nice" pkg="rviz" type="rviz" name="fastlio_rviz" args="-d $(find fast_lio)/rviz_cfg/loam_livox.rviz" />
+    </group>
+
+    <group if="$(arg playbag)">
+    <node pkg="rosbag" type="play" name="bagplay" args="$(arg bagfile)"/>
     </group>
 
 </launch>
