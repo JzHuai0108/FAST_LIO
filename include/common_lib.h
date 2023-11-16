@@ -47,10 +47,20 @@ typedef Matrix3f M3F;
 #define MF(a,b)  Matrix<float, (a), (b)>
 #define VF(a)    Matrix<float, (a), 1>
 
-M3D Eye3d(M3D::Identity());
-M3F Eye3f(M3F::Identity());
-V3D Zero3d(0, 0, 0);
-V3F Zero3f(0, 0, 0);
+// M3D Eye3d(M3D::Identity());
+// M3F Eye3f(M3F::Identity());
+// V3D Zero3d(0, 0, 0);
+// V3F Zero3f(0, 0, 0);
+
+struct RadarPointInfo
+{
+    float doppler;
+    float intensity;
+    float range_std;
+    float azimuth_std;
+    float elevation_std;
+    float doppler_std;
+};
 
 struct MeasureGroup     // Lidar data and imu dates for the curent process
 {
@@ -63,17 +73,18 @@ struct MeasureGroup     // Lidar data and imu dates for the curent process
     double lidar_end_time;
     PointCloudXYZI::Ptr lidar;
     deque<sensor_msgs::Imu::ConstPtr> imu;
+    std::vector<RadarPointInfo> radarPonts;
 };
 
 struct StatesGroup
 {
     StatesGroup() {
 		this->rot_end = M3D::Identity();
-		this->pos_end = Zero3d;
-        this->vel_end = Zero3d;
-        this->bias_g  = Zero3d;
-        this->bias_a  = Zero3d;
-        this->gravity = Zero3d;
+		this->pos_end = Eigen::Vector3d::Zero();
+        this->vel_end = Eigen::Vector3d::Zero();
+        this->bias_g  = Eigen::Vector3d::Zero();
+        this->bias_a  = Eigen::Vector3d::Zero();
+        this->gravity = Eigen::Vector3d::Zero();
         this->cov     = MD(DIM_STATE,DIM_STATE)::Identity() * INIT_COV;
         this->cov.block<9,9>(9,9) = MD(9,9)::Identity() * 0.00001;
 	};
@@ -140,8 +151,8 @@ struct StatesGroup
     void resetpose()
     {
         this->rot_end = M3D::Identity();
-		this->pos_end = Zero3d;
-        this->vel_end = Zero3d;
+		this->pos_end = Eigen::Vector3d::Zero();
+        this->vel_end = Eigen::Vector3d::Zero();
     }
 
 	M3D rot_end;      // the estimated attitude (rotation matrix) at the end lidar point
@@ -217,10 +228,10 @@ bool esti_normvector(Matrix<T, 3, 1> &normvec, const PointVector &point, const T
     return true;
 }
 
-float calc_dist(PointType p1, PointType p2){
-    float d = (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y) + (p1.z - p2.z) * (p1.z - p2.z);
-    return d;
-}
+// float calc_dist(PointType p1, PointType p2){
+//     float d = (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y) + (p1.z - p2.z) * (p1.z - p2.z);
+//     return d;
+// }
 
 template<typename T>
 bool esti_plane(Matrix<T, 4, 1> &pca_result, const PointVector &point, const T &threshold)
@@ -256,4 +267,5 @@ bool esti_plane(Matrix<T, 4, 1> &pca_result, const PointVector &point, const T &
     return true;
 }
 
-#endif
+
+#endif //COMMON_LIB_H

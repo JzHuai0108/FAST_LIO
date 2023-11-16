@@ -82,11 +82,64 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
     hesai_handler(msg);
     break;
 
+  case ARS:
+    radar_handler(msg);
+    break;
+
   default:
     printf("Error LiDAR Type");
     break;
   }
   *pcl_out = pl_surf;
+}
+
+void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, 
+                          PointCloudXYZI::Ptr &pcl_out, 
+                          std::vector<RadarPointInfo> &radar_points)
+{
+  switch (time_unit)
+  {
+    case SEC:
+      time_unit_scale = 1.e3f;
+      break;
+    case MS:
+      time_unit_scale = 1.f;
+      break;
+    case US:
+      time_unit_scale = 1.e-3f;
+      break;
+    case NS:
+      time_unit_scale = 1.e-6f;
+      break;
+    default:
+      time_unit_scale = 1.f;
+      break;
+  }
+
+  switch (lidar_type)
+  {
+  case OUST64:
+    oust64_handler(msg);
+    break;
+
+  case VELO16:
+    velodyne_handler(msg);
+    break;
+  
+  case HESAI:
+    hesai_handler(msg);
+    break;
+
+  case ARS:
+    radar_handler(msg);
+    break;
+
+  default:
+    printf("Error LiDAR Type");
+    break;
+  }
+  *pcl_out = pl_surf;
+  radar_points = mvRandarPoints;
 }
 
 void Preprocess::avia_handler(const livox_ros_driver2::CustomMsg::ConstPtr &msg)
@@ -500,6 +553,57 @@ void Preprocess::hesai_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
       }
     }
   }    
+}
+
+void Preprocess::radar_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+{
+  pl_surf.clear();
+  pl_corn.clear();
+  pl_full.clear();
+  mvRandarPoints.clear();
+
+  pcl::PointCloud<ars_ros::Point> pl_orig;
+  pcl::fromROSMsg(*msg, pl_orig);
+  int plsize = pl_orig.points.size();
+  if (plsize == 0) return;
+  pl_surf.reserve(plsize);
+
+  double scan_begin_time = msg->header.stamp.toSec();
+
+  for (int i = 0; i < plsize; i++)
+  {
+    PointType added_pt;
+    // cout<<"!!!!!!"<<i<<" "<<plsize<<endl;
+    
+    added_pt.normal_x = 0;
+    added_pt.normal_y = 0;
+    added_pt.normal_z = 0;
+    added_pt.x = pl_orig.points[i].x;
+    added_pt.y = pl_orig.points[i].y;
+    added_pt.z = pl_orig.points[i].z;
+    added_pt.intensity = pl_orig.points[i].intensity;
+    added_pt.curvature = 0;
+
+    RadarPointInfo radarPoint;
+    radarPoint.doppler = pl_orig[i].doppler;
+    radarPoint.range_std = pl_orig[i].range_std;
+    radarPoint.azimuth_std = pl_orig[i].azimuth_std;
+    radarPoint.elevation_std = pl_orig[i].elevation_std;
+    radarPoint.doppler_std = pl_orig[i].doppler_std;
+
+    // std::cout << "range_std:" << pl_orig.points[i].range_std 
+    //           << " azimuth_std:" << pl_orig.points[i].azimuth_std
+    //           << " elevation_std:" << pl_orig.points[i].elevation_std << std::endl;
+
+    if (i % point_filter_num == 0)
+    {
+      if(added_pt.x*added_pt.x+added_pt.y*added_pt.y+added_pt.z*added_pt.z > (blind * blind))
+      {
+        pl_surf.points.emplace_back(added_pt);
+        mvRandarPoints.emplace_back(radarPoint);
+      }
+    }
+  }   
 }
 
 void Preprocess::give_feature(pcl::PointCloud<PointType> &pl, vector<orgtype> &types)

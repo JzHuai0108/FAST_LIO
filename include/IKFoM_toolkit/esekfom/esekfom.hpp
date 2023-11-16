@@ -86,6 +86,7 @@ struct dyn_share_datastruct
 	Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> h_v;
 	Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> h_x;
 	Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> R;
+	Eigen::Vector3d omega_wi_meas;
 };
 
 //used for iterated error state EKF update
@@ -1616,7 +1617,7 @@ public:
 	}
 	
 	//iterated error state EKF update modified for one specific system.
-	void update_iterated_dyn_share_modified(double R, double &solve_time) {
+	void update_iterated_dyn_share_modified(double R, double &solve_time, Eigen::Vector3d &omega_wi_meas) {
 		
 		dyn_share_datastruct<scalar_type> dyn_share;
 		dyn_share.valid = true;
@@ -1632,6 +1633,11 @@ public:
 		vectorized_state dx_new = vectorized_state::Zero();
 		for(int i=-1; i<maximum_iter; i++)
 		{
+			//set cur imu omega_wi_meas
+			dyn_share.omega_wi_meas = omega_wi_meas;
+			// std::cout << "imu_omega_wi_meas:" << dyn_share.omega_wi_meas << std::endl;
+			//x ,y, z, w
+			// std::cout << "x_.rot:" << x_.rot << std::endl;
 			dyn_share.valid = true;	
 			h_dyn_share(x_, dyn_share);
 

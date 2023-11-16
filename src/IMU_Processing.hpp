@@ -1,3 +1,6 @@
+#ifndef IMU_PROCESSING_H
+#define IMU_PROCESSING_H
+
 #include <cmath>
 #include <math.h>
 #include <deque>
@@ -24,6 +27,7 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <geometry_msgs/Vector3.h>
 #include "use-ikfom.hpp"
+// #include "preprocess.h"
 
 /// *************Preconfiguration
 
@@ -100,9 +104,9 @@ ImuProcess::ImuProcess()
   cov_bias_acc  = V3D(0.0001, 0.0001, 0.0001);
   mean_acc      = V3D(0, 0, -1.0);
   mean_gyr      = V3D(0, 0, 0);
-  angvel_last     = Zero3d;
-  Lidar_T_wrt_IMU = Zero3d;
-  Lidar_R_wrt_IMU = Eye3d;
+  angvel_last     = Eigen::Vector3d::Zero();
+  Lidar_T_wrt_IMU = Eigen::Vector3d::Zero();
+  Lidar_R_wrt_IMU = M3D::Identity();
   last_imu_.reset(new sensor_msgs::Imu());
 }
 
@@ -113,7 +117,7 @@ void ImuProcess::Reset()
   // ROS_WARN("Reset ImuProcess");
   mean_acc      = V3D(0, 0, -1.0);
   mean_gyr      = V3D(0, 0, 0);
-  angvel_last       = Zero3d;
+  angvel_last       = Eigen::Vector3d::Zero();
   imu_need_init_    = true;
   last_lidar_end_time_ = 0;
   start_timestamp_  = -1;
@@ -414,3 +418,5 @@ void ImuProcess::Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 
   
   // cout<<"[ IMU Process ]: Time: "<<t3 - t1<<endl;
 }
+
+#endif // IMU_PROCESSING_H

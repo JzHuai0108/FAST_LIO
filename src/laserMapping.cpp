@@ -85,6 +85,7 @@ condition_variable sig_buffer;
 string root_dir = ROOT_DIR;
 string map_file_path, lid_topic, imu_topic;
 string state_log_dir;
+int closest_maps;
 
 double res_mean_last = 0.05, total_residual = 0.0;
 double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
@@ -105,6 +106,10 @@ vector<double>       extrinR(9, 0.0);
 deque<double>                     time_buffer;
 deque<PointCloudXYZI::Ptr>        lidar_buffer;
 deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
+std::deque<std::vector<RadarPointInfo> > qvPoints;
+std::vector<RadarPointInfo> gvCurRadarPoints;
+Eigen::Vector3d gImuAngVel;
+double gdPointSelectVelTh = 0.3;
 
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
@@ -124,15 +129,15 @@ std::string mapdir = "";
 std::string init_lidar_pose_file = "";
 vector<double> init_world_t_imu(3, 0.0);
 vector<double> init_world_rpy_imu(3, 0.0);
-V3D init_world_t_imu_vec(Zero3d);
-M3D init_world_R_imu(Eye3d);
+V3D init_world_t_imu_vec(0, 0, 0);
+M3D init_world_R_imu = Eigen::Matrix3d::Identity();
 
 V3F XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);
 V3F XAxisPoint_world(LIDAR_SP_LEN, 0.0, 0.0);
 V3D euler_cur;
-V3D position_last(Zero3d);
-V3D Lidar_T_wrt_IMU(Zero3d);
-M3D Lidar_R_wrt_IMU(Eye3d);
+V3D position_last(0, 0, 0);
+V3D Lidar_T_wrt_IMU(0, 0, 0);
+M3D Lidar_R_wrt_IMU = Eigen::Matrix3d::Identity();
 
 /*** EKF inputs and output ***/
 MeasureGroup Measures;
@@ -153,6 +158,11 @@ void SigHandle(int sig)
     flg_exit = true;
     ROS_WARN("catch sig %d", sig);
     sig_buffer.notify_all();
+}
+
+float calc_dist(PointType p1, PointType p2){
+    float d = (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y) + (p1.z - p2.z) * (p1.z - p2.z);
+    return d;
 }
 
 inline void dump_lio_state_to_log(double lidar_end_time, const state_ikfom& state_point, FILE *fp)  
@@ -284,11 +294,14 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     {
         ROS_ERROR("lidar loop back, clear buffer");
         lidar_buffer.clear();
+        qvPoints.clear();
     }
 
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
-    p_pre->process(msg, ptr);
+    std::vector<RadarPointInfo> vRadarPoints;
+    p_pre->process(msg, ptr, vRadarPoints);
     lidar_buffer.push_back(ptr);
+    qvPoints.push_back(vRadarPoints);
     time_buffer.push_back(msg->header.stamp.toSec());
     last_timestamp_lidar = msg->header.stamp.toSec();
     s_plot11[scan_count] = omp_get_wtime() - preprocess_start_time;
@@ -374,6 +387,7 @@ bool sync_packages(MeasureGroup &meas)
     if(!lidar_pushed)
     {
         meas.lidar = lidar_buffer.front();
+        meas.radarPonts = qvPoints.front();
         meas.lidar_beg_time = time_buffer.front();
         if (meas.lidar->points.size() <= 1) // time too little
         {
@@ -413,6 +427,7 @@ bool sync_packages(MeasureGroup &meas)
     }
 
     lidar_buffer.pop_front();
+    qvPoints.pop_front();
     time_buffer.pop_front();
     lidar_pushed = false;
     return true;
@@ -468,11 +483,119 @@ void map_incremental()
     kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
+void load_2pcd_map(const std::vector<V3D>& TLS_positions, std::vector<pair<int, double> > &min_dist, const int &near_map) {
+    // find the nearest position in the TLS map
+    int nearest_index = -1;
+    int nTlsSize = TLS_positions.size();
+    // int nNearMap = 3;
+    std::vector<pair<int, double> > vDist(nTlsSize);
+    std::vector<std::string> vMin2Map;
+
+    for (int TLSIdx = 0; TLSIdx < nTlsSize; TLSIdx++)
+    {
+        vDist[TLSIdx].first = TLSIdx + 1;
+        vDist[TLSIdx].second = (state_point.pos - TLS_positions[TLSIdx]).norm();
+        // std::cout << "state_point.pos:" << state_point.pos << std::endl;
+        // std::cout << "TLS_positions[i]:" << TLS_positions[i] << std::endl;
+    }
+
+    sort(vDist.begin(), vDist.end(), [](const pair<int, double>& a, const pair<int, double>& b)
+    {
+        return a.second < b.second;
+    });
+
+    for(int i = 0; i < vDist.size(); i++)
+    {
+        std::cout << vDist[i].first << ":" << vDist[i].second << " ";
+    }
+    std::cout << "----------------\n";
+
+    int map_match = 0;
+    for(int mapIdx = 0; mapIdx < near_map; mapIdx++)
+    {
+        for(int mapIdx1 = 0; mapIdx1 < min_dist.size(); mapIdx1++)
+        {
+            if(min_dist[mapIdx1].first == vDist[mapIdx].first) map_match++;
+        }
+    }
+
+    for(int i = 0; i < near_map; i++)
+    {
+        std::cout << "tls_min" << i << ":   " << vDist[i].first << ",dist:" << vDist[i].second << std::endl;
+        std::cout << "loaded map" << i << ":   " << min_dist[i].first << ",dist:" << min_dist[i].second << std::endl;
+    }
+    std::cout << "------------------" << std::endl;
+    // std::cout << "map_match:" << map_match << std::endl;
+    if(map_match == near_map) 
+    {
+        std::cout << "same map do not load\n";
+        return;
+    }
+    
+    PointVector PointToAdd;
+    for(int mapIdx = 0; mapIdx < near_map; mapIdx++)
+    {
+        std::string map_filename = mapdir + "/" + std::to_string(vDist[mapIdx].first) + "_uniform.pcd";
+        // LOAD PCD MAP
+        PointCloudXYZI::Ptr map(new PointCloudXYZI());
+        pcl::io::loadPCDFile<PointType>(map_filename, *map);
+        downSizeFilterMap.setInputCloud(map);
+        PointCloudXYZI::Ptr map_ds(new PointCloudXYZI());
+        downSizeFilterMap.filter(*map_ds);
+
+        // PointToAdd.reserve(map_ds->points.size());
+        for (int i = 0; i < map_ds->points.size(); i++)
+        {
+            PointToAdd.emplace_back(map_ds->points[i]);
+        }
+        ROS_INFO("Load pcd map of %s, size: %zu.", map_filename.c_str(), PointToAdd.size());
+        min_dist.at(mapIdx) = vDist[mapIdx];
+    }
+
+    std::cout << "~~~update TCL_PCD!" << std::endl;
+    ikdtree.Build(PointToAdd);
+    // ROS_INFO("Load pcd map of %zu points downsampled from %zu from %s.", 
+    //         PointToAdd.size(), map->points.size(), map_filename.c_str());
+}
+
+void load_all_pcd_map(int &all_maps_nums, bool &load_map_flag) {
+    if(false == load_map_flag)
+    {
+        return;
+    }
+
+    PointVector PointToAdd;
+    for(int mapIdx = 1; mapIdx < all_maps_nums + 1; mapIdx++)
+    {
+        std::string map_filename = mapdir + "/" + std::to_string(mapIdx) + "_uniform.pcd";
+        // LOAD PCD MAP
+        PointCloudXYZI::Ptr map(new PointCloudXYZI());
+        pcl::io::loadPCDFile<PointType>(map_filename, *map);
+        downSizeFilterMap.setInputCloud(map);
+        PointCloudXYZI::Ptr map_ds(new PointCloudXYZI());
+        downSizeFilterMap.filter(*map_ds);
+
+        // PointToAdd.reserve(map_ds->points.size());
+        for (int i = 0; i < map_ds->points.size(); i++)
+        {
+            PointToAdd.emplace_back(map_ds->points[i]);
+        }
+        ROS_INFO("Load pcd map of %s, size: %zu.", map_filename.c_str(), PointToAdd.size());
+    }
+
+    std::cout << "~~~update TCL_PCD!" << std::endl;
+    ikdtree.Build(PointToAdd);
+    load_map_flag = false;
+    // ROS_INFO("Load pcd map of %zu points downsampled from %zu from %s.", 
+    //         PointToAdd.size(), map->points.size(), map_filename.c_str());
+}
+
 void load_pcd_map(const std::vector<V3D>& TLS_positions, int &min_dis_id) {
     // find the nearest position in the TLS map
     int nearest_index = -1;
     double min_distance = std::numeric_limits<double>::max();
-    for (int i = 0; i < TLS_positions.size(); i++)
+    int nTlsSize = TLS_positions.size();
+    for (int i = 0; i < nTlsSize; i++)
     {
         double distance = (state_point.pos - TLS_positions[i]).norm();
         if (distance < min_distance)
@@ -489,7 +612,7 @@ void load_pcd_map(const std::vector<V3D>& TLS_positions, int &min_dis_id) {
     std::cout << "~~~update TCL_PCD!" << std::endl;
     min_dis_id = nearest_index;
     std::cout << "~~~nearest_index: " << nearest_index << std::endl;
-    string map_filename = mapdir + "/" + std::to_string(nearest_index) + ".pcd";
+    string map_filename = mapdir + "/" + std::to_string(nearest_index) + "_uniform.pcd";
 
     // LOAD PCD MAP
     PointCloudXYZI::Ptr map(new PointCloudXYZI());
@@ -700,6 +823,189 @@ void publish_path(const ros::Publisher pubPath)
     }
 }
 
+void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) 
+{
+    double match_start = omp_get_wtime();
+    laserCloudOri->clear(); 
+    corr_normvect->clear(); 
+    total_residual = 0.0;
+    int nPlaneConstraintNums = 0;
+
+    // w = w_measure - bg - ng
+    Eigen::Vector3d omega_wi = ekfom_data.omega_wi_meas - s.bg;
+
+    // std::cout << "gvCurRadarPoints.size:" << gvCurRadarPoints.size() << std::endl;
+    // std::cout << "feats_down_body.size:" << feats_down_body->points.size() << std::endl;
+
+    /** closest surface search and residual computation **/
+    #ifdef MP_EN
+        omp_set_num_threads(MP_PROC_NUM);
+        #pragma omp parallel for
+    #endif
+    //compute residual for each points
+    for (int i = 0; i < feats_down_size; i++)
+    {
+        PointType &point_body  = feats_down_body->points[i]; 
+        PointType &point_world = feats_down_world->points[i]; 
+
+        /* transform to world frame */
+        V3D p_body(point_body.x, point_body.y, point_body.z);
+        V3D p_global(s.rot * (s.offset_R_L_I*p_body + s.offset_T_L_I) + s.pos);
+        point_world.x = p_global(0);
+        point_world.y = p_global(1);
+        point_world.z = p_global(2);
+        point_world.intensity = point_body.intensity;
+
+        vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
+
+        auto &points_near = Nearest_Points[i];
+
+        if (ekfom_data.converge)
+        {
+            /** Find the closest surfaces in the map **/
+            ikdtree.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis);
+            point_selected_surf[i] = points_near.size() < NUM_MATCH_POINTS ? false : pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5 ? false : true;
+        }
+
+        if (!point_selected_surf[i]) continue;
+
+        VF(4) pabcd;
+        point_selected_surf[i] = false;
+        // plane function ax+by+cz+d=0 and compute distance between point to plane
+        if (esti_plane(pabcd, points_near, 0.1f))
+        {
+            float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3);
+            float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
+
+            //the residual > 0.9 , the point is valid
+            if (s > 0.9)
+            {
+                point_selected_surf[i] = true;
+                normvec->points[i].x = pabcd(0);
+                normvec->points[i].y = pabcd(1);
+                normvec->points[i].z = pabcd(2);
+                normvec->points[i].intensity = pd2; // distance between point to plane
+                res_last[i] = abs(pd2);             // residual
+                nPlaneConstraintNums++;
+            }
+        }
+
+        Eigen::Vector3d p3d(feats_down_body->points[i].x, feats_down_body->points[i].y, feats_down_body->points[i].z);
+        Eigen::Vector3d D(s.rot.toRotationMatrix() * s.vel + omega_wi.cross(s.offset_T_L_I));
+        double dPointVelDiff = abs(gvCurRadarPoints[i].doppler + (p3d / p3d.norm()).transpose() * s.offset_R_L_I.toRotationMatrix().transpose() * D) / gvCurRadarPoints[i].doppler;
+
+        if(gdPointSelectVelTh < dPointVelDiff)
+        {
+            point_selected_surf[i] = false;
+        }
+    }
+
+    effct_feat_num = 0;
+
+    //sum residual if the point is valid
+    for (int i = 0; i < feats_down_size; i++)
+    {
+        if (point_selected_surf[i])
+        {
+            laserCloudOri->points[effct_feat_num] = feats_down_body->points[i];
+            corr_normvect->points[effct_feat_num] = normvec->points[i];
+            // total_residual += res_last[i];
+            effct_feat_num ++;
+        }
+    }
+
+    std::cout << "nPlaneConstraintNums:" << nPlaneConstraintNums << std::endl;
+    std::cout << "effct_feat_num:" << effct_feat_num << std::endl;
+
+    if (effct_feat_num < 1)
+    {
+        ekfom_data.valid = false;
+        ROS_WARN("No Effective Points! \n");
+        return;
+    }
+
+    // res_mean_last = total_residual / effct_feat_num;
+    match_time  += omp_get_wtime() - match_start;
+    double solve_start_  = omp_get_wtime();
+
+
+    /*** Computation of Measuremnt Jacobian matrix H and measurents vector ***/
+    //init Jacobian matrix H in 21 dimension
+    ekfom_data.h_x = MatrixXd::Zero(effct_feat_num, 42); //23
+    ekfom_data.h.resize(effct_feat_num);
+
+    for (int i = 0; i < effct_feat_num; i++)
+    {
+        // valid points in lidar frame
+        const PointType &laser_p  = laserCloudOri->points[i];
+        V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
+        M3D point_be_crossmat;
+        point_be_crossmat << SKEW_SYM_MATRX(point_this_be);
+        // in imu frame
+        V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I;
+        M3D point_crossmat;
+        //point's skew matrix in imu frame
+        point_crossmat<<SKEW_SYM_MATRX(point_this);
+
+        /*** get the normal vector of closest surface/corner ***/
+        const PointType &norm_p = corr_normvect->points[i];
+        V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
+
+        /*** calculate the Measuremnt Jacobian matrix H ***/
+        V3D C(s.rot.conjugate() *norm_vec);
+        V3D A(point_crossmat * C);
+
+        // valid points in lidar frame
+        Eigen::Vector3d point_unit = point_this_be / point_this_be.norm();
+
+        // pos, rot, offset_R_L_I, offset_T_L_I, vel, bg, ba
+        if (extrinsic_est_en)
+        {
+            V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() * C); //s.rot.conjugate()*norm_vec);
+            Eigen::Vector3d D(s.rot.toRotationMatrix() * s.vel + omega_wi.cross(s.offset_T_L_I));
+            //velocity constraint 
+            ekfom_data.h_x.block<1, 3>(i,0) << 0, 0, 0;
+            ekfom_data.h_x.block<1, 3>(i,3) = point_unit.transpose() * s.offset_R_L_I.toRotationMatrix().transpose()* s.rot.toRotationMatrix() * SKEW_SYM_MATRX(s.vel);
+            ekfom_data.h_x.block<1, 3>(i,6) = point_unit.transpose() * s.offset_R_L_I.toRotationMatrix().transpose() * SKEW_SYM_MATRX(D);
+            ekfom_data.h_x.block<1, 3>(i,9) = -point_unit.transpose() * s.offset_R_L_I.toRotationMatrix().transpose() * SKEW_SYM_MATRX(omega_wi);
+            ekfom_data.h_x.block<1, 3>(i,12) = -point_unit.transpose() * s.offset_R_L_I.toRotationMatrix().transpose() * s.rot.toRotationMatrix();
+            ekfom_data.h_x.block<1, 3>(i,15) = -point_unit.transpose() * s.offset_R_L_I.toRotationMatrix().transpose() * SKEW_SYM_MATRX(s.offset_T_L_I);
+            ekfom_data.h_x.block<1, 3>(i,18) << 0, 0, 0;
+            //plane contraint
+            ekfom_data.h_x.block<1, 3>(i,21) << norm_p.x, norm_p.y, norm_p.z;
+            ekfom_data.h_x.block<1, 3>(i,24) << VEC_FROM_ARRAY(A);
+            ekfom_data.h_x.block<1, 3>(i,27) << VEC_FROM_ARRAY(B);
+            ekfom_data.h_x.block<1, 3>(i,30) << VEC_FROM_ARRAY(C);
+            ekfom_data.h_x.block<1, 3>(i,33) << 0, 0, 0;
+            ekfom_data.h_x.block<1, 3>(i,36) << 0, 0, 0;
+            ekfom_data.h_x.block<1, 3>(i,39) << 0, 0, 0;
+        }
+        else
+        {
+            //velocity constraint 
+            ekfom_data.h_x.block<1, 3>(i,0) << 0, 0, 0;
+            ekfom_data.h_x.block<1, 3>(i,3) = point_unit.transpose() * s.offset_R_L_I.toRotationMatrix().transpose()* s.rot.toRotationMatrix() * SKEW_SYM_MATRX(s.vel);
+            ekfom_data.h_x.block<1, 3>(i,6) << 0, 0, 0;
+            ekfom_data.h_x.block<1, 3>(i,9) << 0, 0, 0;
+            ekfom_data.h_x.block<1, 3>(i,12) = -point_unit.transpose() * s.offset_R_L_I.toRotationMatrix().transpose() * s.rot.toRotationMatrix();
+            ekfom_data.h_x.block<1, 3>(i,15) = -point_unit.transpose() * s.offset_R_L_I.toRotationMatrix().transpose() * SKEW_SYM_MATRX(s.offset_T_L_I);
+            ekfom_data.h_x.block<1, 3>(i,18) << 0, 0, 0;
+            //plane contraint
+            ekfom_data.h_x.block<1, 3>(i,21) << norm_p.x, norm_p.y, norm_p.z;
+            ekfom_data.h_x.block<1, 3>(i,24) << VEC_FROM_ARRAY(A);
+            ekfom_data.h_x.block<1, 3>(i,27) << 0, 0, 0;
+            ekfom_data.h_x.block<1, 3>(i,30) << 0, 0, 0;
+            ekfom_data.h_x.block<1, 3>(i,33) << 0, 0, 0;
+            ekfom_data.h_x.block<1, 3>(i,36) << 0, 0, 0;
+            ekfom_data.h_x.block<1, 3>(i,39) << 0, 0, 0;
+        }
+
+        /*** Measuremnt: distance to the closest surface/corner ***/
+        ekfom_data.h(i) = -norm_p.intensity;
+    }
+
+}
+
 void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data)
 {
     double match_start = omp_get_wtime();
@@ -876,6 +1182,7 @@ int main(int argc, char** argv)
     nh.param<bool>("publish/scan_bodyframe_pub_en",scan_body_pub_en, true);
     nh.param<int>("max_iteration",NUM_MAX_ITERATIONS,4);
     nh.param<string>("map_file_path",map_file_path,"");
+    nh.param<int>("load_closest_N_maps",closest_maps,3);
     nh.param<string>("common/lid_topic",lid_topic,"/livox/lidar");
     nh.param<string>("common/imu_topic", imu_topic,"/livox/imu");
     nh.param<bool>("common/time_sync_en", time_sync_en, false);
@@ -953,7 +1260,25 @@ int main(int argc, char** argv)
 
     double epsi[23] = {0.001};
     fill(epsi, epsi+23, 0.001);
-    kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS, epsi);
+    if(true == extrinsic_est_en)
+    {
+        ROS_INFO("Extrinsic parameters calibration enable!");
+    }
+    else
+    {
+        ROS_INFO("Extrinsic parameters calibration disable!");
+    }
+
+    if(5 == p_pre->lidar_type)
+    {
+        ROS_INFO("Using radar and add velocity constraint!");
+        kf.init_dyn_share(get_f, df_dx, df_dw, h_model_radar_loc, NUM_MAX_ITERATIONS, epsi);
+    }
+    else
+    {
+        ROS_INFO("Normal filter!");
+        kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS, epsi);
+    }
 
     /*** debug record ***/
     FILE *fp = NULL;
@@ -997,6 +1322,10 @@ int main(int argc, char** argv)
 
     vector<V3D> TLS_positions;
     int min_dis_id = -1;
+    bool bLoadAllMaps = true;
+    int nAllMapsNum = 26;
+    double max_dist = std::numeric_limits<double>::max();
+    std::vector<pair<int, double> > vMapDist(closest_maps, std::make_pair(0, max_dist));
     if (locmode) {
         std::cout << "mapdir: " << mapdir << std::endl;
         load_submap_poses(mapdir, TLS_positions);
@@ -1004,8 +1333,12 @@ int main(int argc, char** argv)
         V3D init_w_t_lidar;
         M3D init_w_R_lidar;
         load_initial_lidar_pose(init_lidar_pose_file, init_w_t_lidar, init_w_R_lidar);
+        std::cout << "init_w_t_lidar:" << init_w_t_lidar << std::endl;
+        std::cout << "init_w_R_lidar:" << init_w_R_lidar << std::endl;
         init_world_R_imu = init_w_R_lidar * Lidar_R_wrt_IMU.transpose();
         init_world_t_imu_vec = init_w_t_lidar - init_world_R_imu * Lidar_T_wrt_IMU;
+        std::cout << "init_world_t_imu_vec:" << init_world_t_imu_vec << std::endl;
+        std::cout << "init_world_R_imu:" << init_world_R_imu << std::endl;
     }
 
     while (status)
@@ -1014,6 +1347,17 @@ int main(int argc, char** argv)
         ros::spinOnce();
         if(sync_packages(Measures)) 
         {
+            //get cur imu angular velocity
+            if(true == Measures.imu.empty())
+            {
+                continue;
+            }
+            // std::cout << "imu_time:" << setprecision(15) << Measures.imu.back()->header.stamp.toSec() << std::endl;
+            gImuAngVel[0] = Measures.imu.back()->angular_velocity.x;
+            gImuAngVel[1] = Measures.imu.back()->angular_velocity.y;
+            gImuAngVel[2] = Measures.imu.back()->angular_velocity.z;
+            gvCurRadarPoints = Measures.radarPonts;
+
             if (flg_first_scan)
             {
                 first_lidar_time = Measures.lidar_beg_time;
@@ -1048,12 +1392,21 @@ int main(int argc, char** argv)
                             false : true;
             /*** Segment the map in lidar FOV ***/
             lasermap_fov_segment();
-
+            std::cout << "feats_undistort_size:" << feats_undistort->points.size() << std::endl;
             /*** downsample the feature points in a scan ***/
-            downSizeFilterSurf.setInputCloud(feats_undistort);
-            downSizeFilterSurf.filter(*feats_down_body);
+            // if radar used, downsample is not needed.
+            if(5 == p_pre->lidar_type)
+            {
+                feats_down_body = feats_undistort;
+            }
+            else
+            {
+                downSizeFilterSurf.setInputCloud(feats_undistort);
+                downSizeFilterSurf.filter(*feats_down_body);
+            }
             t1 = omp_get_wtime();
             feats_down_size = feats_down_body->points.size();
+            std::cout << "feats_down_size:" << feats_down_size << std::endl;
             /*** initialize the map kdtree ***/
             if(ikdtree.Root_Node == nullptr)
             {
@@ -1071,9 +1424,12 @@ int main(int argc, char** argv)
                     continue;
                 }
             }
-            if (locmode) {
+            if (locmode && bLoadAllMaps) {
+                ROS_INFO("-------bLoadAllMaps-------");
                 ikdtree.set_downsample_param(filter_size_map_min);
-                load_pcd_map(TLS_positions, min_dis_id);
+                // load_pcd_map(TLS_positions, min_dis_id);
+                // load_2pcd_map(TLS_positions, vMapDist, closest_maps);
+                load_all_pcd_map(nAllMapsNum, bLoadAllMaps);
             }
             int featsFromMapNum = ikdtree.validnum();
             kdtree_size_st = ikdtree.size();
@@ -1094,7 +1450,7 @@ int main(int argc, char** argv)
             fout_pre<<setw(20)<<Measures.lidar_beg_time - first_lidar_time<<" "<<euler_cur.transpose()<<" "<< state_point.pos.transpose()<<" "<<ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<< " " << state_point.vel.transpose() \
             <<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<< endl;
 
-            if(0) // If you need to see map point, change to "if(1)"
+            if(1) // If you need to see map point, change to "if(1)"
             { // This can drastically slow down the program.
                 PointVector ().swap(ikdtree.PCL_Storage);
                 ikdtree.flatten(ikdtree.Root_Node, ikdtree.PCL_Storage, NOT_RECORD);
@@ -1113,7 +1469,7 @@ int main(int argc, char** argv)
             /*** iterated state estimation ***/
             double t_update_start = omp_get_wtime();
             double solve_H_time = 0;
-            kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
+            kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time, gImuAngVel);
             state_point = kf.get_x();
             euler_cur = SO3ToEuler(state_point.rot);
             pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
@@ -1177,6 +1533,7 @@ int main(int argc, char** argv)
     /**************** save map ****************/
     /* 1. make sure you have enough memories
     /* 2. pcd save will largely influence the real-time performences **/
+    //pcd_save in only one file
     if (pcl_wait_save->size() > 0 && pcd_save_en)
     {
         string file_name = string("scans.pcd");
