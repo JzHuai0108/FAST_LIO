@@ -91,3 +91,17 @@ target_include_directories(fastlio_tam PRIVATE ${PYTHON_INCLUDE_DIRS})
 add_executable(fastlio_mapping src/mapping_node.cpp)
 target_link_libraries(fastlio_mapping fastlio_tam)
 target_include_directories(fastlio_mapping PUBLIC include)
+
+install(TARGETS 
+fastlio_tam
+fastlio_mapping
+ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(DIRECTORY launch/
+DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch)
+
+install(DIRECTORY include/
+    DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
