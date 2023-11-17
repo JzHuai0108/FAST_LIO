@@ -17,7 +17,8 @@
 	<param name="max_iteration" type="int" value="3" />
 	<param name="filter_size_surf" type="double" value="0.5" />
 	<param name="filter_size_map" type="double" value="0.5" />
-	<param name="cube_side_length" type="double" value="200" />
+	<!-- cube_side_length changed to 200 will cause obvious drift in mapping, but not in localization. So do not reduce it here! -->
+	<param name="cube_side_length" type="double" value="1000" />
 	<param name="runtime_pos_log_enable" type="bool" value="0" />
     <node pkg="fast_lio" type="fastlio_mapping" name="laserMapping" output="screen" /> 
 
