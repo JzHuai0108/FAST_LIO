@@ -114,6 +114,8 @@ std::vector<RadarPointInfo> gvCurRadarPoints;
 std::vector<RadarPointInfo> gvEffectFeatRadarPoints;
 Eigen::Vector3d gImuAngVel;
 double gdPointSelectVelTh = 0.3;
+std::vector<double> gvRadarVel(10000, 0.0);
+std::vector<double> gvEffectRadarVel(10000, 0.0);
 
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
@@ -846,7 +848,6 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
     total_residual = 0.0;
     int nPlaneConstraintNums = 0;
 
-    std::vector<double> vRadarVel, vEffectRadarVel;
     // w = w_measure - bg - ng
     Eigen::Vector3d omega_wi = ekfom_data.omega_wi_meas - s.bg;
 
@@ -914,7 +915,8 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
         double pointVel = (p3d / p3d.norm()).transpose() * s.offset_R_L_I.toRotationMatrix().transpose() * D;
         double res_Vel = fabs(gvCurRadarPoints[i].doppler + pointVel);
         double dPointVelDiff = res_Vel / gvCurRadarPoints[i].doppler;
-        vRadarVel.emplace_back(res_Vel);
+        gvRadarVel.at(i) = res_Vel;
+        // gvRadarVel.emplace_back(res_Vel);
 
         if(gdPointSelectVelTh < dPointVelDiff)
         {
@@ -932,7 +934,7 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
             laserCloudOri->points[effct_feat_num] = feats_down_body->points[i];
             corr_normvect->points[effct_feat_num] = normvec->points[i];
             gvEffectFeatRadarPoints.emplace_back(gvCurRadarPoints[i]);
-            vEffectRadarVel.emplace_back(vRadarVel[i]);
+            gvEffectRadarVel.at(effct_feat_num) = gvRadarVel[i];
             // total_residual += res_last[i];
             effct_feat_num ++;
         }
@@ -1024,7 +1026,7 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
         }
 
         /*** Measuremnt: distance to the closest surface/corner ***/
-        ekfom_data.h(2 * i) = vEffectRadarVel.at(i);
+        ekfom_data.h(2 * i) = gvEffectRadarVel.at(i);
         ekfom_data.h(2 * i + 1) = -norm_p.intensity;
     }
 }
@@ -1394,7 +1396,13 @@ int main(int argc, char** argv)
             gImuAngVel[0] = Measures.imu.back()->angular_velocity.x;
             gImuAngVel[1] = Measures.imu.back()->angular_velocity.y;
             gImuAngVel[2] = Measures.imu.back()->angular_velocity.z;
-            gvCurRadarPoints = Measures.radarPonts;
+
+            gvCurRadarPoints.resize(Measures.radarPonts.size());
+            for(int i = 0; i < Measures.radarPonts.size(); i++)
+            {
+                gvCurRadarPoints.at(i) = Measures.radarPonts[i];
+            }
+            // gvCurRadarPoints = Measures.radarPonts;
 
             if (flg_first_scan)
             {

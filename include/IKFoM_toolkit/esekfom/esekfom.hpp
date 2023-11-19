@@ -2039,6 +2039,7 @@ public:
 			}
 			*/
 
+			std::cout << "n:" << n << " dof_Measurement:" << dof_Measurement << std::endl;
 			if(n > dof_Measurement)
 			{
 			//#ifdef USE_sparse
