@@ -60,6 +60,7 @@ struct RadarPointInfo
     float azimuth_std;
     float elevation_std;
     float doppler_std;
+    Eigen::Vector3d xyz_sigma;
 };
 
 struct MeasureGroup     // Lidar data and imu dates for the curent process

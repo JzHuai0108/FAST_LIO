@@ -8,11 +8,12 @@
     <arg name="locmode" default="true" />
     <arg name="init_lidar_pose_file" default="" />
     <arg name="save_directory" default="$(find fast_lio)/Log" />
-    <rosparam command="load" file="$(find fast_lio)/config/hesai32_whu_handheld.yaml" />
+    <rosparam command="load" file="$(find fast_lio)/config/radar_whu_handheld.yaml" />
 
     <param name="locmode" type="bool" value="$(arg locmode)" />
     <param name="mapdir" type="string" value="$(arg mapdir)" />
-    <param name="init_lidar_pose_file" type="string" value="$(arg init_lidar_pose_file)" />
+    <!-- <param name="init_lidar_pose_file" type="string" value="$(arg init_lidar_pose_file)" /> -->
+    <param name="init_lidar_pose_file" type="string" value="/midea_robot/ros1_ws/dataset/lio-dataset/tls/project2/data1_radar_to_TLS.txt" />
     <param name="load_closest_N_maps_en" type="bool" value="0"/>
     <param name="load_closest_N_maps" type="int" value="3"/>
     <param name="load_front_N_maps_en" type="bool" value="1"/>
@@ -24,8 +25,8 @@
     <param name="scan_publish_enable" type="bool" value="1" />
 	  <param name="dense_publish_enable" type="bool" value="1" />
     <param name="filter_size_surf" type="double" value="0.2" />
-    <param name="filter_size_map" type="double" value="0.1" />
-    <param name="cube_side_length" type="double" value="1000" />
+    <param name="filter_size_map" type="double" value="0.5" />
+    <param name="cube_side_length" type="double" value="4000" />
     <param name="runtime_pos_log_enable" type="bool" value="0" />
     <param name="save_directory" type="string" value="$(arg save_directory)" />
     <node pkg="fast_lio" type="fastlio_mapping" name="laserMapping" output="screen" /> 

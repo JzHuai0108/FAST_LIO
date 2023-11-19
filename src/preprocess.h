@@ -62,8 +62,8 @@ namespace ars_ros {
       float doppler;
       float intensity;
       float range_std;
-      float azimuth_std;
-      float elevation_std;
+      float azimuth_std;    //yaw
+      float elevation_std;  //pitch
       float doppler_std;
       EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   };
@@ -164,6 +164,8 @@ class Preprocess
   int  plane_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i, uint &i_nex, Eigen::Vector3d &curr_direct);
   bool small_plane(const PointCloudXYZI &pl, vector<orgtype> &types, uint i_cur, uint &i_nex, Eigen::Vector3d &curr_direct);
   bool edge_jump_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i, Surround nor_dir);
+  void RaeSigmaToXyzSigma(const Eigen::Vector3d &xyz, const Eigen::Vector3d &raeSigma, Eigen::Vector3d &xyzSigma);
+  void RaeSigmaToXyzSigmaCore(const Eigen::Vector3d &rae, const Eigen::Vector3d &raeSigma, Eigen::Vector3d &xyzSigma);
   
   int group_size;
   double disA, disB, inf_bound;

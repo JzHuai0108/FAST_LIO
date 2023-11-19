@@ -584,6 +584,7 @@ void Preprocess::radar_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
     added_pt.intensity = pl_orig.points[i].intensity;
     added_pt.curvature = 0;
 
+    // Raw data optional. If you do not use, delete it!
     RadarPointInfo radarPoint;
     radarPoint.doppler = pl_orig[i].doppler;
     radarPoint.range_std = pl_orig[i].range_std;
@@ -591,9 +592,12 @@ void Preprocess::radar_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
     radarPoint.elevation_std = pl_orig[i].elevation_std;
     radarPoint.doppler_std = pl_orig[i].doppler_std;
 
-    // std::cout << "range_std:" << pl_orig.points[i].range_std 
-    //           << " azimuth_std:" << pl_orig.points[i].azimuth_std
-    //           << " elevation_std:" << pl_orig.points[i].elevation_std << std::endl;
+    // Calculate radar points sigma (important)
+    Eigen::Vector3d radarPointXYZ(pl_orig.points[i].x, pl_orig.points[i].y, pl_orig.points[i].z);
+    Eigen::Vector3d radarPointRAESigma(pl_orig[i].range_std,pl_orig[i].azimuth_std, pl_orig[i].elevation_std);
+    Eigen::Vector3d radarPointXYZSigma(0, 0, 0);
+    RaeSigmaToXyzSigma(radarPointXYZ, radarPointRAESigma, radarPointXYZSigma);
+    radarPoint.xyz_sigma = radarPointXYZSigma;
 
     if (i % point_filter_num == 0)
     {
@@ -1080,4 +1084,28 @@ bool Preprocess::edge_jump_judge(const PointCloudXYZI &pl, vector<orgtype> &type
   }
   
   return true;
+}
+
+void Preprocess::RaeSigmaToXyzSigma(const Eigen::Vector3d &xyz, const Eigen::Vector3d &raeSigma, Eigen::Vector3d &xyzSigma) 
+{
+  double r = xyz.norm();
+  double a = std::atan2(xyz.y(), xyz.x());
+  double e = std::asin(xyz.z() / r);
+  RaeSigmaToXyzSigmaCore(Eigen::Vector3d(r, a, e), raeSigma, xyzSigma);
+}
+
+void Preprocess::RaeSigmaToXyzSigmaCore(const Eigen::Vector3d &rae, const Eigen::Vector3d &raeSigma, Eigen::Vector3d &xyzSigma) 
+{
+  double ca = std::cos(rae.y());
+  double sa = std::sin(rae.y());
+  double ce = std::cos(rae.z());
+  double se = std::sin(rae.z());
+  Eigen::Matrix3d J;
+  double r = rae.x();
+  J << ca * ce, -r * ce * sa, -r * ca * se, ce * sa, r * ca * ce, -r * sa * se,
+  se, 0, r * ce;
+
+  Eigen::Matrix3d xyzCov =
+  J * raeSigma.cwiseAbs2().asDiagonal() * J.transpose();
+  xyzSigma = xyzCov.diagonal().cwiseSqrt();
 }
