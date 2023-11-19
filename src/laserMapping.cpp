@@ -894,38 +894,41 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
         point_selected_surf[i] = false;
         // plane function ax+by+cz+d=0 and compute distance between point to plane
         float planedistthreshold = 0.1f;
-        float matchdistratio = 0.7;
+        float matchdistratio = 0.7;  // 0.9 for lidar
         if (esti_plane(pabcd, points_near, planedistthreshold))
         {
             float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3);
-            float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
+            float splane = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
 
             //the residual > 0.9 , the point is valid
-            if (s > matchdistratio) // 0.9 for lidar
+            if (splane > matchdistratio)
             {
-                point_selected_surf[i] = true;
                 normvec->points[i].x = pabcd(0);
                 normvec->points[i].y = pabcd(1);
                 normvec->points[i].z = pabcd(2);
                 normvec->points[i].intensity = pd2; // distance between point to plane
-                res_last[i] = abs(pd2);             // residual
-                nPlaneConstraintNums++;
+                res_last[i] = abs(pd2);
+
+                // velocity constraint
+                Eigen::Vector3d p3d(feats_down_body->points[i].x, feats_down_body->points[i].y, feats_down_body->points[i].z);
+                Eigen::Vector3d D(s.rot.toRotationMatrix() * s.vel + omega_wi.cross(s.offset_T_L_I));
+                double pointVel = (p3d / p3d.norm()).transpose() * s.offset_R_L_I.toRotationMatrix().transpose() * D;
+                double res_Vel = fabs(gvCurRadarPoints[i].doppler + pointVel);
+                double dPointVelDiff = res_Vel / gvCurRadarPoints[i].doppler;
+                gvRadarVel.at(i) = res_Vel;
+                // if(gdPointSelectVelTh < dPointVelDiff)
+                // {
+                //     point_selected_surf[i] = false;
+                // } else {
+                    point_selected_surf[i] = true;
+                // }
+                if (point_selected_surf[i])
+                {
+                    nPlaneConstraintNums++;
+                }
+                printf("%d pred pointvel %.4f doppler %.4f res_Vel %.4f dPointVelDiff %.4f\n", 
+                                i, pointVel, gvCurRadarPoints[i].doppler, res_Vel, dPointVelDiff);
             }
-
-        }
-
-        //velocity constraint
-        Eigen::Vector3d p3d(feats_down_body->points[i].x, feats_down_body->points[i].y, feats_down_body->points[i].z);
-        Eigen::Vector3d D(s.rot.toRotationMatrix() * s.vel + omega_wi.cross(s.offset_T_L_I));
-        double pointVel = (p3d / p3d.norm()).transpose() * s.offset_R_L_I.toRotationMatrix().transpose() * D;
-        double res_Vel = fabs(gvCurRadarPoints[i].doppler + pointVel);
-        double dPointVelDiff = res_Vel / gvCurRadarPoints[i].doppler;
-        gvRadarVel.at(i) = res_Vel;
-        // gvRadarVel.emplace_back(res_Vel);
-
-        if(gdPointSelectVelTh < dPointVelDiff)
-        {
-            point_selected_surf[i] = false;
         }
     }
 
@@ -943,6 +946,11 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
             // total_residual += res_last[i];
             effct_feat_num ++;
         }
+    }
+
+    if (effct_feat_num != nPlaneConstraintNums)
+    {
+        ROS_WARN("effct_feat_num %d nPlaneConstraintNums %d", effct_feat_num, nPlaneConstraintNums);
     }
 
     std::cout << "nPlaneConstraintNums:" << nPlaneConstraintNums << std::endl;
@@ -963,11 +971,15 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
 
     /*** Computation of Measuremnt Jacobian matrix H and measurents vector ***/
     //init Jacobian matrix H in 2n * 18 dimension
-    ekfom_data.h_x = Eigen::MatrixXd::Zero(effct_feat_num * 2, kvalidjacs);
-    ekfom_data.h.resize(2 * effct_feat_num);
-
-    //init R matrix
-    ekfom_data.R = Eigen::MatrixXd::Zero(effct_feat_num * 2, effct_feat_num * 2);
+#undef WITHVEL
+#ifdef WITHVEL
+    int obsdim = effct_feat_num * 2;
+#else
+    int obsdim = effct_feat_num;
+#endif
+    ekfom_data.h_x = Eigen::MatrixXd::Zero(obsdim, kvalidjacs);
+    ekfom_data.h.resize(obsdim);
+    ekfom_data.R = Eigen::MatrixXd::Zero(obsdim, obsdim);
 
     for (int i = 0; i < effct_feat_num; i++)
     {
@@ -1003,11 +1015,9 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
         // std::cout << "var_xyz:" << var_xyz << std::endl;
         double varDoppler = gvEffectFeatRadarPoints[i].doppler_std * gvEffectFeatRadarPoints[i].doppler_std;
 
-        //set R matrix
+#ifdef WITHVEL
         ekfom_data.R.diagonal()[2 * i] = varDoppler;
         ekfom_data.R.diagonal()[2 * i + 1] = varPlaneDist;
-
-        // same val
         ekfom_data.h_x.block<1, 3>(2 * i, 0) << 0, 0, 0;
         ekfom_data.h_x.block<1, 3>(2 * i, 3) = point_unit.transpose() * s.offset_R_L_I.toRotationMatrix().transpose()* s.rot.toRotationMatrix() * SKEW_SYM_MATRX(s.vel);
         ekfom_data.h_x.block<1, 3>(2 * i, 12) = -point_unit.transpose() * s.offset_R_L_I.toRotationMatrix().transpose() * s.rot.toRotationMatrix();
@@ -1033,6 +1043,20 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
         /*** Measuremnt: distance to the closest surface/corner ***/
         ekfom_data.h(2 * i) = gvEffectRadarVel.at(i);
         ekfom_data.h(2 * i + 1) = -norm_p.intensity;
+#else
+        ekfom_data.R.diagonal()[i] = varPlaneDist;
+        ekfom_data.h_x.block<1, 3>(i, 0) << norm_p.x, norm_p.y, norm_p.z;
+        ekfom_data.h_x.block<1, 3>(i, 3) << VEC_FROM_ARRAY(A);
+        ekfom_data.h_x.block<1, 3>(i, 12) << 0, 0, 0;
+        ekfom_data.h_x.block<1, 3>(i, 15) << 0, 0, 0;
+        if (extrinsic_est_en)
+        {
+            V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() * C); //s.rot.conjugate()*norm_vec);
+            ekfom_data.h_x.block<1, 3>(i, 6) << VEC_FROM_ARRAY(B);
+            ekfom_data.h_x.block<1, 3>(i, 9) << VEC_FROM_ARRAY(C);
+        }
+        ekfom_data.h(i) = -norm_p.intensity;
+#endif
     }
 }
 
