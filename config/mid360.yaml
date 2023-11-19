@@ -10,7 +10,7 @@ preprocess:
     scan_line: 4
     blind: 1.2
 
-filter_size_map: 0.08
+filter_size_map: 0.2
 mapping:
     acc_cov: 0.1
     gyr_cov: 0.1
@@ -23,9 +23,14 @@ mapping:
     extrinsic_R: [ 1, 0, 0,
                    0, 1, 0,
                    0, 0, 1]
-    init_world_t_imu: [-0.5, 0.4, 0.0]
-    init_world_rpy_imu: [0.0, 0.0, 0.2]
+    init_world_t_lidar: [0.0, 0.0, 0.0]
+    init_world_qxyzw_lidar: [0.0, 0.0, 0.0, 1.0]
 
+queue_size:
+    lidar: 1
+    imu: 200
+    pub_cloud: 1
+    pub_path: 1
 
 publish:
     path_en:  false

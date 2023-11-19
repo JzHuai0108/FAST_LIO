@@ -29,6 +29,7 @@ public:
     ros::Publisher pubLaserCloudMap;
     ros::Publisher pubOdomAftMapped;
     ros::Publisher pubPath;
+    ros::Publisher pubPose;
 
     tf::TransformBroadcaster tf_broadcaster_;
 };

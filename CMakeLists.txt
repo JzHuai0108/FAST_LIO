@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(fast_lio)
 
-# SET(CMAKE_BUILD_TYPE "Debug")
+SET(CMAKE_BUILD_TYPE "Release")
 
 ADD_COMPILE_OPTIONS(-std=c++14 )
 # ADD_COMPILE_OPTIONS(-std=c++14 )
@@ -54,6 +54,7 @@ find_package(catkin REQUIRED COMPONENTS
   livox_ros_driver2
   message_generation
   eigen_conversions
+  fast_csm_icp
 )
 
 find_package(Eigen3 REQUIRED)
@@ -79,7 +80,7 @@ generate_messages(
 )
 
 catkin_package(
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs message_runtime
+  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs message_runtime fast_csm_icp
   DEPENDS EIGEN3 # PCL
   INCLUDE_DIRS
 )

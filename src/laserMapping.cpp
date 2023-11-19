@@ -56,6 +56,7 @@
 #include <tf/transform_datatypes.h>
 #include <tf/transform_broadcaster.h>
 #include <geometry_msgs/Vector3.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <livox_ros_driver2/CustomMsg.h>
 #include "preprocess.h"
 #include <ikd-Tree/ikd_Tree.h>
@@ -121,8 +122,9 @@ KD_TREE<PointType> ikdtree;
 bool locmode = false;
 bool showmap = false;
 std::string pcdmap = "";
-vector<double> init_world_t_imu(3, 0.0);
-vector<double> init_world_rpy_imu(3, 0.0);
+vector<double> init_world_t_lidar(3, 0.0);
+vector<double> init_world_qxyzw_lidar{0, 0, 0, 1.0};
+V3D init_world_t_imu(Zero3d);
 M3D init_world_R_imu(Eye3d);
 
 V3F XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);
@@ -811,15 +813,20 @@ LaserMapping::LaserMapping(ros::NodeHandle &nh) {
     nh.param<std::string>("pcdmap", pcdmap, "");
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
-    nh.param<vector<double>>("mapping/init_world_t_imu", init_world_t_imu, vector<double>());
-    nh.param<vector<double>>("mapping/init_world_rpy_imu", init_world_rpy_imu, vector<double>());
-    init_world_R_imu = EulerToRotM(init_world_rpy_imu);
-    cout << "locmode?" << locmode << ", filter_size_map " << filter_size_map_min << std::endl;
-    cout << "init_world_t_imu: " << init_world_t_imu[0] << " " << init_world_t_imu[1] << " " << init_world_t_imu[2] << endl;
-    cout << "init_world_rpy_imu: " << init_world_rpy_imu[0] << " " << init_world_rpy_imu[1] << " " << init_world_rpy_imu[2] << endl;
-    cout << "init_world_R_imu: " << endl << init_world_R_imu << endl;
-
+    nh.param<vector<double>>("mapping/init_world_t_lidar", init_world_t_lidar, vector<double>());
+    nh.param<vector<double>>("mapping/init_world_qxyzw_lidar", init_world_qxyzw_lidar, vector<double>());
     cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
+
+    int lidar_queue_size = 10;
+    int imu_queue_size = 400;
+    int pub_cloud_queue_size = 10;
+    int pub_path_queue_size = 10;
+    nh.param<int>("queue_size/lidar", lidar_queue_size, 200000);
+    nh.param<int>("queue_size/imu", imu_queue_size, 200000);
+    nh.param<int>("queue_size/pub_cloud", pub_cloud_queue_size, 100000);
+    nh.param<int>("queue_size/pub_path", pub_path_queue_size, 100000);
+    cout << "lidar_queue_size " << lidar_queue_size << ", imu_queue_size " << imu_queue_size
+         << ", pub_cloud_queue_size " << pub_cloud_queue_size << ", pub_path_queue_size " << pub_path_queue_size << endl;
 
     path.header.stamp    = ros::Time::now();
     path.header.frame_id ="camera_init";
@@ -848,6 +855,13 @@ LaserMapping::LaserMapping(ros::NodeHandle &nh) {
     p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
 
+    Eigen::Quaterniond init_world_q_lidar(init_world_qxyzw_lidar[3], init_world_qxyzw_lidar[0], init_world_qxyzw_lidar[1], init_world_qxyzw_lidar[2]);
+    init_world_R_imu = init_world_q_lidar.toRotationMatrix() * Lidar_R_wrt_IMU.transpose();
+    init_world_t_imu = V3D(init_world_t_lidar[0], init_world_t_lidar[1], init_world_t_lidar[2]) - init_world_R_imu * Lidar_T_wrt_IMU;
+    cout << "locmode?" << locmode << ", filter_size_map " << filter_size_map_min << std::endl;
+    cout << "init_world_t_imu: " << init_world_t_imu.transpose() << endl;
+    cout << "init_world_R_imu:\n" << init_world_R_imu << endl;
+
     double epsi[23] = {0.001};
     fill(epsi, epsi+23, 0.001);
     kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS, epsi);
@@ -866,21 +880,22 @@ LaserMapping::LaserMapping(ros::NodeHandle &nh) {
 
     /*** ROS subscribe initialization ***/
     sub_pcl = p_pre->lidar_type == AVIA ? \
-        nh.subscribe(lid_topic, 200000, livox_pcl_cbk) : \
-        nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
-    sub_imu = nh.subscribe(imu_topic, 200000, imu_cbk);
+        nh.subscribe(lid_topic, lidar_queue_size, livox_pcl_cbk) : \
+        nh.subscribe(lid_topic, lidar_queue_size, standard_pcl_cbk);
+    sub_imu = nh.subscribe(imu_topic, imu_queue_size, imu_cbk);
     pubLaserCloudFull = nh.advertise<sensor_msgs::PointCloud2>
-            ("/cloud_registered", 100000);
+            ("/cloud_registered", pub_cloud_queue_size);
     pubLaserCloudFull_body = nh.advertise<sensor_msgs::PointCloud2>
-            ("/cloud_registered_body", 100000);
+            ("/cloud_registered_body", pub_cloud_queue_size);
     pubLaserCloudEffect = nh.advertise<sensor_msgs::PointCloud2>
-            ("/cloud_effected", 100000);
+            ("/cloud_effected", pub_cloud_queue_size);
     pubLaserCloudMap = nh.advertise<sensor_msgs::PointCloud2>
-            ("/Laser_map", 100000);
+            ("/Laser_map", pub_cloud_queue_size);
     pubOdomAftMapped = nh.advertise<nav_msgs::Odometry> 
-            ("/Odometry", 100000);
+            ("/Odometry", pub_path_queue_size);
     pubPath          = nh.advertise<nav_msgs::Path> 
-            ("/path", 100000);
+            ("/path", pub_path_queue_size);
+    pubPose = nh.advertise<geometry_msgs::PoseWithCovarianceStamped>("/amcl_pose", 2, true);
 }
 
 LaserMapping::~LaserMapping() {
@@ -944,11 +959,37 @@ void LaserMapping::saveAndClose() {
 void LaserMapping::publish_tf() {
     tf::Vector3 position(state_point.pos(0), state_point.pos(1), state_point.pos(2));
     tf::Quaternion quat(geoQuat.x, geoQuat.y, geoQuat.z, geoQuat.w);
-    tf::Transform map_T_baselink(quat, position); // note the baselink is the same as the lidar scan frame, FLU.
+    tf::Transform odom_T_baselink(quat, position); // note the baselink is the same as the lidar scan frame, FLU.
     tf::Transform baselink_T_basefootprint(tf::Quaternion(0, 0, 0, 1), tf::Vector3(0, 0, -0.1)); // per the burger turtlebot xacro file
-    tf::Transform map_T_basefootprint = map_T_baselink * baselink_T_basefootprint;
-    tf::StampedTransform map_T_basefootprint_stamped(map_T_basefootprint, ros::Time().fromSec(lidar_end_time), "map", "base_footprint");
-    tf_broadcaster_.sendTransform(map_T_basefootprint_stamped);
+    tf::Transform odom_T_basefootprint = odom_T_baselink * baselink_T_basefootprint;
+    tf::StampedTransform odom_T_basefootprint_stamped(odom_T_basefootprint, ros::Time().fromSec(lidar_end_time), "odom", "base_footprint");
+    tf_broadcaster_.sendTransform(odom_T_basefootprint_stamped);
+
+    // in loc mode, map frame is identical to the odometry frame.
+    tf::Transform map_T_odom(tf::Quaternion(0, 0, 0, 1), tf::Vector3(0, 0, 0));
+    tf::StampedTransform map_T_odom_stamped(map_T_odom, ros::Time().fromSec(lidar_end_time), "map", "odom");
+    tf_broadcaster_.sendTransform(map_T_odom_stamped);
+
+    geometry_msgs::PoseWithCovarianceStamped p;
+    p.header.frame_id = "map";
+    p.header.stamp = ros::Time().fromSec(lidar_end_time);
+    p.pose.pose.position.x = state_point.pos(0);
+    p.pose.pose.position.y = state_point.pos(1);
+    p.pose.pose.position.z = state_point.pos(2);
+    p.pose.pose.orientation.x = geoQuat.x;
+    p.pose.pose.orientation.y = geoQuat.y;
+    p.pose.pose.orientation.z = geoQuat.z;
+    p.pose.pose.orientation.w = geoQuat.w;
+    auto P = kf.get_P();
+    for (int i = 0; i < 6; i ++) {
+        p.pose.covariance[i*6 + 0] = P(i, 0);
+        p.pose.covariance[i*6 + 1] = P(i, 1);
+        p.pose.covariance[i*6 + 2] = P(i, 2);
+        p.pose.covariance[i*6 + 3] = P(i, 3);
+        p.pose.covariance[i*6 + 4] = P(i, 4);
+        p.pose.covariance[i*6 + 5] = P(i, 5);
+    }
+    pubPose.publish(p);
 }
 
 void LaserMapping::spinOnce() {
@@ -1030,8 +1071,10 @@ void LaserMapping::spinOnce() {
         feats_down_world->resize(feats_down_size);
 
         V3D ext_euler = SO3ToEuler(state_point.offset_R_L_I);
-        fout_pre<<setw(20)<<Measures.lidar_beg_time - first_lidar_time<<" "<<euler_cur.transpose()<<" "<< state_point.pos.transpose()<<" "<<ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<< " " << state_point.vel.transpose() \
-        <<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<< endl;
+        fout_pre<<setw(20)<<Measures.lidar_beg_time - first_lidar_time<<" "<<euler_cur.transpose()<<" "
+            << state_point.pos.transpose()<<" "<<ext_euler.transpose() << " "
+            << state_point.offset_T_L_I.transpose()<< " " << state_point.vel.transpose() << " "
+            << state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<< endl;
 
         if (showmap) // If you need to visualize the map, change to "if(1)"
         {  // This can drastically slow down the program.
@@ -1066,14 +1109,14 @@ void LaserMapping::spinOnce() {
         /******* Publish odometry *******/
         publish_odometry(pubOdomAftMapped);
         
-        publish_tf();
-
         /*** add the feature points to map kdtree ***/
+        t3 = omp_get_wtime();
         if (!locmode) {
-            t3 = omp_get_wtime();
             map_incremental();
-            t5 = omp_get_wtime();
+        } else {
+            publish_tf();
         }
+        t5 = omp_get_wtime();
         /******* Publish points *******/
         if (path_en)                         publish_path(pubPath);
         if (scan_pub_en || pcd_save_en)      publish_frame_world(pubLaserCloudFull);
