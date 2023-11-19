@@ -117,7 +117,7 @@ double gdPointSelectVelTh = 0.3;
 std::vector<double> gvRadarVel(10000, 0.0);
 std::vector<double> gvEffectRadarVel(10000, 0.0);
 
-PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
+sensor_msgs::PointCloud2 laserCloudMap;
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_down_world(new PointCloudXYZI());
@@ -592,6 +592,24 @@ void load_front_N_pcd_map(int &all_maps_nums, bool &load_map_flag)
     load_map_flag = false;
     // ROS_INFO("Load pcd map of %zu points downsampled from %zu from %s.", 
     //         PointToAdd.size(), map->points.size(), map_filename.c_str());
+
+    auto DownsamplePointcloud = [](PointCloudXYZI::Ptr pc) {
+        PointCloudXYZI::Ptr filtered_pc(new PointCloudXYZI());
+        pcl::VoxelGrid<PointType> sor;
+        sor.setInputCloud(pc);
+        sor.setLeafSize(0.5, 0.5, 0.5);
+        // sor.setMinimumPointsNumberPerVoxel(1);
+        sor.filter(*filtered_pc);
+        return filtered_pc;
+    };
+    PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
+    featsFromMap->reserve(PointToAdd.size());
+    for (int i = 0; i < PointToAdd.size(); i++)
+    {
+        featsFromMap->push_back(PointToAdd[i]);
+    }
+    featsFromMap = DownsamplePointcloud(featsFromMap);
+    pcl::toROSMsg(*featsFromMap, laserCloudMap);
 }
 
 void load_pcd_map(const std::vector<V3D>& TLS_positions, int &min_dis_id) {
@@ -746,19 +764,6 @@ void publish_effect_world(const ros::Publisher & pubLaserCloudEffect)
 
 void publish_map(const ros::Publisher & pubLaserCloudMap)
 {
-    auto DownsamplePointcloud = [](PointCloudXYZI::Ptr pc) {
-        PointCloudXYZI::Ptr filtered_pc(new PointCloudXYZI());
-        pcl::VoxelGrid<PointType> sor;
-        sor.setInputCloud(pc);
-        sor.setLeafSize(0.5, 0.5, 0.5);
-        // sor.setMinimumPointsNumberPerVoxel(1);
-        sor.filter(*filtered_pc);
-        return filtered_pc;
-    };
-    sensor_msgs::PointCloud2 laserCloudMap;
-    //Reduce memory consume, map downsample before publish.
-    featsFromMap = DownsamplePointcloud(featsFromMap);
-    pcl::toROSMsg(*featsFromMap, laserCloudMap);
     laserCloudMap.header.stamp = ros::Time().fromSec(lidar_end_time);
     laserCloudMap.header.frame_id = "camera_init";
     pubLaserCloudMap.publish(laserCloudMap);
@@ -1497,11 +1502,16 @@ int main(int argc, char** argv)
 
             if(1) // If you need to see map point, change to "if(1)"
             { // This can drastically slow down the program.
-                PointVector ().swap(ikdtree.PCL_Storage);
-                ikdtree.flatten(ikdtree.Root_Node, ikdtree.PCL_Storage, NOT_RECORD);
-                featsFromMap->clear();
-                featsFromMap->points = ikdtree.PCL_Storage;
-                publish_map(pubLaserCloudMap);
+                if (locmode) {
+                    publish_map(pubLaserCloudMap);
+                } else {
+                    PointVector ().swap(ikdtree.PCL_Storage);
+                    ikdtree.flatten(ikdtree.Root_Node, ikdtree.PCL_Storage, NOT_RECORD);
+                    PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
+                    featsFromMap->points = ikdtree.PCL_Storage;
+                    pcl::toROSMsg(*featsFromMap, laserCloudMap);
+                    publish_map(pubLaserCloudMap);
+                }
             }
 
             pointSearchInd_surf.resize(feats_down_size);
