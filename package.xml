@@ -27,7 +27,6 @@
   <build_depend>pcl_ros</build_depend>
   <build_depend>livox_ros_driver2</build_depend>
   <build_depend>message_generation</build_depend>
-  <build_depend>fast_csm_icp</build_depend>
 
   <run_depend>geometry_msgs</run_depend>
   <run_depend>nav_msgs</run_depend>
@@ -39,7 +38,6 @@
   <run_depend>pcl_ros</run_depend>
   <run_depend>livox_ros_driver2</run_depend>
   <run_depend>message_runtime</run_depend>
-  <run_depend>fast_csm_icp</run_depend>
 
   <test_depend>rostest</test_depend>
   <test_depend>rosbag</test_depend>
