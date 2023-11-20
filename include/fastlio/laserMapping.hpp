@@ -10,7 +10,6 @@ class LaserMapping {
 public:
     LaserMapping(ros::NodeHandle& nh);
     ~LaserMapping();
-    void publish_tf();
     void spinOnce();
     int spin();
     void saveAndClose();
@@ -29,7 +28,6 @@ public:
     ros::Publisher pubLaserCloudMap;
     ros::Publisher pubOdomAftMapped;
     ros::Publisher pubPath;
-    ros::Publisher pubPose;
 
     tf::TransformBroadcaster tf_broadcaster_;
 };

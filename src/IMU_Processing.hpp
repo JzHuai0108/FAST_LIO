@@ -22,7 +22,8 @@
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <geometry_msgs/Vector3.h>
-#include "use-ikfom.hpp"
+#include <tf/transform_broadcaster.h>
+#include "publish_tf.h"
 
 /// *************Preconfiguration
 
@@ -49,6 +50,7 @@ class ImuProcess
   void set_acc_cov(const V3D &scaler);
   void set_gyr_bias_cov(const V3D &b_g);
   void set_acc_bias_cov(const V3D &b_a);
+  void set_tf_broadcaster(tf::TransformBroadcaster *tf_broadcaster);
   Eigen::Matrix<double, 12, 12> Q;
   void Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr pcl_un_);
 
@@ -60,6 +62,7 @@ class ImuProcess
   V3D cov_bias_gyr;
   V3D cov_bias_acc;
   double first_lidar_time;
+  tf::TransformBroadcaster *tf_broadcaster_;
 
  private:
   void IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
@@ -164,6 +167,11 @@ void ImuProcess::set_acc_bias_cov(const V3D &b_a)
   cov_bias_acc = b_a;
 }
 
+void ImuProcess::set_tf_broadcaster(tf::TransformBroadcaster *tf_broadcaster)
+{
+  tf_broadcaster_ = tf_broadcaster;
+}
+
 void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N)
 {
   /** 1. initializing the gravity, gyro bias, acc and gyro covariance
@@ -211,8 +219,11 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 
     init_state.pos = W_t_imu;
     init_state.rot = SO3(W_R_imu);
     init_state.grav = S2(0, 0, -G_m_s2);
+    init_state.ba = mean_acc / mean_acc.norm() * G_m_s2 + W_R_imu.transpose() * Eigen::Vector3d(0, 0, -G_m_s2);
     ROS_INFO_STREAM("Init pose with external translation " << W_t_imu.transpose() << " and rotation\n"
-         << W_R_imu << "\nand gravity " << init_state.grav.get_vect().transpose());
+         << W_R_imu << "\nand gravity " << init_state.grav.get_vect().transpose() << " and acc bias " << init_state.ba.transpose()
+         << "\nand velocity " << init_state.vel.transpose() << " and gyro bias " << init_state.bg.transpose());
+    init_state.vel.setZero();
   }
   kf_state.change_x(init_state);
 
@@ -291,6 +302,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
     Q.block<3, 3>(6, 6).diagonal() = cov_bias_gyr;
     Q.block<3, 3>(9, 9).diagonal() = cov_bias_acc;
     kf_state.predict(dt, Q, in);
+    liopublisher::publish_tf(kf_state, head->header.stamp.toSec(), *tf_broadcaster_);
 
     /* save the poses at each IMU measurements */
     imu_state = kf_state.get_x();

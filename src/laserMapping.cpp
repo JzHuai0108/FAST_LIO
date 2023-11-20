@@ -61,6 +61,7 @@
 #include "preprocess.h"
 #include <ikd-Tree/ikd_Tree.h>
 #include <fastlio/laserMapping.hpp>
+#include "publish_tf.h"
 
 #define INIT_TIME           (0.1)
 #define LASER_POINT_COV     (0.001)
@@ -354,6 +355,10 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
         msg->header.stamp = \
         ros::Time().fromSec(timediff_lidar_wrt_imu + msg_in->header.stamp.toSec());
     }
+    // only works for livox IMU.
+    msg->linear_acceleration.x = msg->linear_acceleration.x * G_m_s2;
+    msg->linear_acceleration.y = msg->linear_acceleration.y * G_m_s2;
+    msg->linear_acceleration.z = msg->linear_acceleration.z * G_m_s2;
 
     double timestamp = msg->header.stamp.toSec();
 
@@ -854,6 +859,7 @@ LaserMapping::LaserMapping(ros::NodeHandle &nh) {
     p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
     p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+    p_imu->set_tf_broadcaster(&tf_broadcaster_);
 
     Eigen::Quaterniond init_world_q_lidar(init_world_qxyzw_lidar[3], init_world_qxyzw_lidar[0], init_world_qxyzw_lidar[1], init_world_qxyzw_lidar[2]);
     init_world_R_imu = init_world_q_lidar.toRotationMatrix() * Lidar_R_wrt_IMU.transpose();
@@ -867,16 +873,22 @@ LaserMapping::LaserMapping(ros::NodeHandle &nh) {
     kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS, epsi);
 
     /*** debug record ***/
-    string pos_log_dir = root_dir + "/Log/pos_log.txt";
+    std::string pos_log_dir;
+    if (!pcdmap.empty()) {
+        root_dir = pcdmap.substr(0, pcdmap.find_last_of("/")); 
+        pos_log_dir = root_dir + "/fastlio_pos_log.txt";
+    } else {
+        pos_log_dir = root_dir + "/Log/pos_log.txt";
+    }
     fp = fopen(pos_log_dir.c_str(),"w");
 
-    fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"),ios::out);
-    fout_out.open(DEBUG_FILE_DIR("mat_out.txt"),ios::out);
-    fout_dbg.open(DEBUG_FILE_DIR("dbg.txt"),ios::out);
-    if (fout_pre && fout_out)
-        cout << "~~~~"<<ROOT_DIR<<" file opened" << endl;
-    else
-        cout << "~~~~"<<ROOT_DIR<<" doesn't exist" << endl;
+    // fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"),ios::out);
+    // fout_out.open(DEBUG_FILE_DIR("mat_out.txt"),ios::out);
+    // fout_dbg.open(DEBUG_FILE_DIR("dbg.txt"),ios::out);
+    // if (fout_pre && fout_out)
+    //     cout << "~~~~"<<ROOT_DIR<<" file opened" << endl;
+    // else
+    //     cout << "~~~~"<<ROOT_DIR<<" doesn't exist" << endl;
 
     /*** ROS subscribe initialization ***/
     sub_pcl = p_pre->lidar_type == AVIA ? \
@@ -895,14 +907,13 @@ LaserMapping::LaserMapping(ros::NodeHandle &nh) {
             ("/Odometry", pub_path_queue_size);
     pubPath          = nh.advertise<nav_msgs::Path> 
             ("/path", pub_path_queue_size);
-    pubPose = nh.advertise<geometry_msgs::PoseWithCovarianceStamped>("/amcl_pose", 2, true);
 }
 
 LaserMapping::~LaserMapping() {
     fclose(fp);
-    fout_pre.close();
-    fout_out.close();
-    fout_dbg.close();
+    // fout_pre.close();
+    // fout_out.close();
+    // fout_dbg.close();
 }
 
 int LaserMapping::spin() {
@@ -934,14 +945,14 @@ void LaserMapping::saveAndClose() {
         pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
     }
 
-    fout_out.close();
-    fout_pre.close();
+    // fout_out.close();
+    // fout_pre.close();
 
     if (runtime_pos_log)
     {
         vector<double> t, s_vec, s_vec2, s_vec3, s_vec4, s_vec5, s_vec6, s_vec7;    
         FILE *fp2;
-        string log_dir = root_dir + "/Log/fast_lio_time_log.csv";
+        string log_dir = root_dir + "/fast_lio_time_log.csv";
         fp2 = fopen(log_dir.c_str(),"w");
         fprintf(fp2,"time_stamp, total time, scan point size, incremental time, search time, delete size, delete time, tree size st, tree size end, add point size, preprocess time\n");
         for (int i = 0;i<time_log_counter; i++){
@@ -954,42 +965,6 @@ void LaserMapping::saveAndClose() {
         }
         fclose(fp2);
     }
-}
-
-void LaserMapping::publish_tf() {
-    tf::Vector3 position(state_point.pos(0), state_point.pos(1), state_point.pos(2));
-    tf::Quaternion quat(geoQuat.x, geoQuat.y, geoQuat.z, geoQuat.w);
-    tf::Transform odom_T_baselink(quat, position); // note the baselink is the same as the lidar scan frame, FLU.
-    tf::Transform baselink_T_basefootprint(tf::Quaternion(0, 0, 0, 1), tf::Vector3(0, 0, -0.1)); // per the burger turtlebot xacro file
-    tf::Transform odom_T_basefootprint = odom_T_baselink * baselink_T_basefootprint;
-    tf::StampedTransform odom_T_basefootprint_stamped(odom_T_basefootprint, ros::Time().fromSec(lidar_end_time), "odom", "base_footprint");
-    tf_broadcaster_.sendTransform(odom_T_basefootprint_stamped);
-
-    // in loc mode, map frame is identical to the odometry frame.
-    tf::Transform map_T_odom(tf::Quaternion(0, 0, 0, 1), tf::Vector3(0, 0, 0));
-    tf::StampedTransform map_T_odom_stamped(map_T_odom, ros::Time().fromSec(lidar_end_time), "map", "odom");
-    tf_broadcaster_.sendTransform(map_T_odom_stamped);
-
-    geometry_msgs::PoseWithCovarianceStamped p;
-    p.header.frame_id = "map";
-    p.header.stamp = ros::Time().fromSec(lidar_end_time);
-    p.pose.pose.position.x = state_point.pos(0);
-    p.pose.pose.position.y = state_point.pos(1);
-    p.pose.pose.position.z = state_point.pos(2);
-    p.pose.pose.orientation.x = geoQuat.x;
-    p.pose.pose.orientation.y = geoQuat.y;
-    p.pose.pose.orientation.z = geoQuat.z;
-    p.pose.pose.orientation.w = geoQuat.w;
-    auto P = kf.get_P();
-    for (int i = 0; i < 6; i ++) {
-        p.pose.covariance[i*6 + 0] = P(i, 0);
-        p.pose.covariance[i*6 + 1] = P(i, 1);
-        p.pose.covariance[i*6 + 2] = P(i, 2);
-        p.pose.covariance[i*6 + 3] = P(i, 3);
-        p.pose.covariance[i*6 + 4] = P(i, 4);
-        p.pose.covariance[i*6 + 5] = P(i, 5);
-    }
-    pubPose.publish(p);
 }
 
 void LaserMapping::spinOnce() {
@@ -1071,10 +1046,10 @@ void LaserMapping::spinOnce() {
         feats_down_world->resize(feats_down_size);
 
         V3D ext_euler = SO3ToEuler(state_point.offset_R_L_I);
-        fout_pre<<setw(20)<<Measures.lidar_beg_time - first_lidar_time<<" "<<euler_cur.transpose()<<" "
-            << state_point.pos.transpose()<<" "<<ext_euler.transpose() << " "
-            << state_point.offset_T_L_I.transpose()<< " " << state_point.vel.transpose() << " "
-            << state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<< endl;
+        // fout_pre<<setw(20)<<Measures.lidar_beg_time - first_lidar_time<<" "<<euler_cur.transpose()<<" "
+        //     << state_point.pos.transpose()<<" "<<ext_euler.transpose() << " "
+        //     << state_point.offset_T_L_I.transpose()<< " " << state_point.vel.transpose() << " "
+        //     << state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<< endl;
 
         if (showmap) // If you need to visualize the map, change to "if(1)"
         {  // This can drastically slow down the program.
@@ -1113,9 +1088,9 @@ void LaserMapping::spinOnce() {
         t3 = omp_get_wtime();
         if (!locmode) {
             map_incremental();
-        } else {
-            publish_tf();
         }
+        liopublisher::publish_tf(kf, lidar_end_time, tf_broadcaster_);
+
         t5 = omp_get_wtime();
         /******* Publish points *******/
         if (path_en)                         publish_path(pubPath);
@@ -1146,10 +1121,15 @@ void LaserMapping::spinOnce() {
             s_plot9[time_log_counter] = aver_time_consu;
             s_plot10[time_log_counter] = add_point_size;
             time_log_counter ++;
-            printf("[ mapping ]: time: IMU + Map + Input Downsample: %0.6f ave match: %0.6f ave solve: %0.6f  ave ICP: %0.6f  map incre: %0.6f ave total: %0.6f icp: %0.6f construct H: %0.6f \n",t1-t0,aver_time_match,aver_time_solve,t3-t1,t5-t3,aver_time_consu,aver_time_icp, aver_time_const_H_time);
+            ROS_INFO("[ mapping ]: time: IMU + Map + Input Downsample: %0.6f ave match: %0.6f ave solve: %0.6f  ave ICP: %0.6f  map incre: %0.6f ave total: %0.6f icp: %0.6f construct H: %0.6f \n",t1-t0,aver_time_match,aver_time_solve,t3-t1,t5-t3,aver_time_consu,aver_time_icp, aver_time_const_H_time);
             ext_euler = SO3ToEuler(state_point.offset_R_L_I);
-            fout_out << setw(20) << Measures.lidar_beg_time - first_lidar_time << " " << euler_cur.transpose() << " " << state_point.pos.transpose()<< " " << ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<<" "<< state_point.vel.transpose() \
-            <<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<<" "<<feats_undistort->points.size()<<endl;
+            // fout_out << setw(20) << Measures.lidar_beg_time - first_lidar_time << " " << euler_cur.transpose() << " "
+            //  << state_point.pos.transpose()<< " " << ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<<" "
+            //  << state_point.vel.transpose()<<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<<" "<<feats_undistort->points.size()<<endl;
+            ROS_INFO_STREAM("lidar beg time " << Measures.lidar_beg_time << " pos " << state_point.pos.transpose()
+                << " eul " << euler_cur.transpose() << " vel " << state_point.vel.transpose() << " bg " << state_point.bg.transpose()
+                << "\nba " << state_point.ba.transpose() << " grav " << state_point.grav << " offset "
+                << state_point.offset_T_L_I.transpose() << " ext eul " << ext_euler.transpose());
             dump_lio_state_to_log(fp);
         }
     }
