@@ -244,6 +244,14 @@ roslaunch fast_lio mapping_velodyne.launch
 rosbag play YOUR_DOWNLOADED.bag
 ```
 
+### 4.3 ARS548 localization relative to TLS point clouds
+```
+datadir=/media/jhuai/BackupPlus/jhuai
+roslaunch fast_lio loc_ars548_whu_handheld.launch bagfile:=$datadir/data/homebrew/handheld/20231109/data4_aligned.bag use_doppler:=true \
+  max_doppler_residual:=10000 init_lidar_pose_file:=$datadir/data/homebrew/handheld/20231109/ars548_radar4_raw/data1_radar_to_TLS.txt \
+  mapdir:=$datadir/data/whu_tls_1030/project2/regis
+```
+
 ## 5.Implementation on UAV
 In order to validate the robustness and computational efficiency of FAST-LIO in actual mobile robots, we build a small-scale quadrotor which can carry a Livox Avia LiDAR with 70 degree FoV and a DJI Manifold 2-C onboard computer with a 1.8 GHz Intel i7-8550U CPU and 8 G RAM, as shown in below.
 
