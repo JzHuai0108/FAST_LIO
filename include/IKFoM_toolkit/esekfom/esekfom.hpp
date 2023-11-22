@@ -54,6 +54,13 @@
 
 //#define USE_sparse
 
+#if !defined(_OPENMP)
+inline double omp_get_wtime(void) {
+	const auto p1 = std::chrono::system_clock::now();
+    return std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
+}
+inline void omp_set_num_threads(int num_threads) {}
+#endif
 
 namespace esekfom {
 

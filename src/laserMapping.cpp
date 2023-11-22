@@ -861,8 +861,6 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
     corr_normvect->clear(); 
     gvEffectFeatRadarPoints.clear();
     total_residual = 0.0;
-    int nPlaneConstraintNums = 0;
-
     // w = w_measure - bg - ng
     Eigen::Vector3d omega_wi = ekfom_data.omega_wi_meas - s.bg;
     if (feats_down_body->points.size() != gvCurRadarPoints.size())
@@ -874,7 +872,7 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
     /** closest surface search and residual computation **/
     #ifdef MP_EN
         omp_set_num_threads(MP_PROC_NUM);
-        #pragma omp parallel for
+        #pragma omp parallel for // reduction(+:count)
     #endif
     //compute residual for each points
     for (int i = 0; i < feats_down_size; i++)
@@ -935,12 +933,6 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
                 } else {
                     point_selected_surf[i] = true;
                 }
-                if (point_selected_surf[i])
-                {
-                    nPlaneConstraintNums++;
-                }
-                // printf("%d pred pointvel %.4f doppler %.4f res_Vel %.4f dPointVelDiff %.4f\n", 
-                //                 i, pointVel, gvCurRadarPoints[i].doppler, res_Vel, dPointVelDiff);
             }
         }
     }
@@ -961,15 +953,13 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
         }
     }
 
-    if (effct_feat_num != nPlaneConstraintNums || effct_feat_num != gvEffectFeatRadarPoints.size())
+    if (effct_feat_num != gvEffectFeatRadarPoints.size())
     {
-        ROS_WARN("effct_feat_num %d nPlaneConstraintNums %d gvEffectFeatRadarPoints.size() %zu", 
-            effct_feat_num, nPlaneConstraintNums, gvEffectFeatRadarPoints.size());
+        ROS_WARN("effct_feat_num %d gvEffectFeatRadarPoints.size() %zu", 
+            effct_feat_num, gvEffectFeatRadarPoints.size());
     }
 
-    std::cout << "nPlaneConstraintNums:" << nPlaneConstraintNums << std::endl;
-    std::cout << "effct_feat_num:" << effct_feat_num << std::endl;
-    std::cout << "h_model_radar_loc-----gvEffectFeatRadarPoints:" << gvEffectFeatRadarPoints.size() << std::endl;
+    std::cout << "Effective feature points: " << effct_feat_num << std::endl;
 
     if (effct_feat_num < 1)
     {

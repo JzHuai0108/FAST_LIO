@@ -3,6 +3,14 @@
 #define RETURN0     0x00
 #define RETURN0AND1 0x10
 
+#if !defined(_OPENMP)
+inline double omp_get_wtime(void) {
+	const auto p1 = std::chrono::system_clock::now();
+    return std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
+}
+inline void omp_set_num_threads(int num_threads) {}
+#endif
+
 Preprocess::Preprocess()
   :feature_enabled(0), lidar_type(AVIA), blind(0.01), point_filter_num(1)
 {
