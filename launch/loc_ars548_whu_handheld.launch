@@ -7,7 +7,8 @@
     <arg name="mapdir" default="/midea_robot/ros1_ws/dataset/lio-dataset/tls/project2/regis" />
     <arg name="locmode" default="true" />
     <arg name="use_doppler" default="false" />
-    <arg name="max_doppler_residual" default="100000" />
+    <arg name="max_dist_ratio" default="0.9" />
+    <arg name="max_doppler_residual_ratio" default="100000" />
     <arg name="init_lidar_pose_file" default="/midea_robot/ros1_ws/dataset/lio-dataset/tls/project2/data1_radar_to_TLS.txt" />
     <arg name="save_directory" default="$(find fast_lio)/Log" />
     <arg name="filter_size_map" default="0.5" />
@@ -15,7 +16,8 @@
 
     <param name="locmode" type="bool" value="$(arg locmode)" />
     <param name="use_doppler" type="bool" value="$(arg use_doppler)" />
-    <param name="max_doppler_residual" type="double" value="$(arg max_doppler_residual)" />
+    <param name="max_dist_ratio" type="double" value="$(arg max_dist_ratio)" />
+    <param name="max_doppler_residual_ratio" type="double" value="$(arg max_doppler_residual_ratio)" />
     <param name="mapdir" type="string" value="$(arg mapdir)" />
     <param name="init_lidar_pose_file" type="string" value="$(arg init_lidar_pose_file)" />
     <param name="load_closest_N_maps_en" type="bool" value="0"/>

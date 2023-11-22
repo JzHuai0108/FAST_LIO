@@ -248,7 +248,7 @@ rosbag play YOUR_DOWNLOADED.bag
 ```
 datadir=/media/jhuai/BackupPlus/jhuai
 roslaunch fast_lio loc_ars548_whu_handheld.launch bagfile:=$datadir/data/homebrew/handheld/20231109/data4_aligned.bag use_doppler:=true \
-  max_doppler_residual:=10000 init_lidar_pose_file:=$datadir/data/homebrew/handheld/20231109/ars548_radar4_raw/data1_radar_to_TLS.txt \
+  max_doppler_residual_ratio:=4 max_dist_ratio:=0.8 init_lidar_pose_file:=$datadir/data/homebrew/handheld/20231109/ars548_radar4_raw/data1_radar_to_TLS.txt \
   mapdir:=$datadir/data/whu_tls_1030/project2/regis
 ```
 

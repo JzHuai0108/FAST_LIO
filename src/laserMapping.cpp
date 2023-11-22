@@ -114,7 +114,8 @@ std::deque<std::vector<RadarPointInfo> > qvPoints;
 std::vector<RadarPointInfo> gvCurRadarPoints;
 std::vector<RadarPointInfo> gvEffectFeatRadarPoints;
 Eigen::Vector3d gImuAngVel;
-double max_doppler_residual = 100000;
+float match_dist_ratio = 0.9;
+double max_doppler_residual_ratio = 100000;
 std::vector<double> gvRadarVel(10000, 0.0);
 std::vector<double> gvEffectRadarVel(10000, 0.0);
 
@@ -905,14 +906,13 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
         point_selected_surf[i] = false;
         // plane function ax+by+cz+d=0 and compute distance between point to plane
         float planedistthreshold = 0.1f;
-        float matchdistratio = 0.7;  // 0.9 for lidar
         if (esti_plane(pabcd, points_near, planedistthreshold))
         {
             float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3);
             float splane = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
 
             //the residual > 0.9 , the point is valid
-            if (splane > matchdistratio)
+            if (splane > match_dist_ratio)
             {
                 normvec->points[i].x = pabcd(0);
                 normvec->points[i].y = pabcd(1);
@@ -927,7 +927,7 @@ void h_model_radar_loc(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ek
                 double res_Vel = gvCurRadarPoints[i].doppler - pointVel;
                 double dPointVelDiff = std::fabs(res_Vel) / gvCurRadarPoints[i].doppler_std;
                 gvRadarVel.at(i) = res_Vel;
-                if(use_doppler && max_doppler_residual < dPointVelDiff)
+                if(use_doppler && max_doppler_residual_ratio < dPointVelDiff)
                 {
                     point_selected_surf[i] = false;
                 } else {
@@ -1270,7 +1270,8 @@ int main(int argc, char** argv)
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
     nh.param<bool>("locmode", locmode, false);
     nh.param<bool>("use_doppler", use_doppler, false);
-    nh.param<double>("max_doppler_residual", max_doppler_residual, 100000.0);
+    nh.param<float>("match_dist_ratio", match_dist_ratio, 0.9);
+    nh.param<double>("max_doppler_residual_ratio", max_doppler_residual_ratio, 100000.0);
     nh.param<std::string>("mapdir", mapdir, "");
     nh.param<std::string>("init_lidar_pose_file", init_lidar_pose_file, "");
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());

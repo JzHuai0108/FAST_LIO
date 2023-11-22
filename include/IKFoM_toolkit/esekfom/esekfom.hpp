@@ -2046,7 +2046,6 @@ public:
 			}
 			*/
 
-			std::cout << "n:" << n << " dof_Measurement:" << dof_Measurement << std::endl;
 			if(n > dof_Measurement)
 			{
 			//#ifdef USE_sparse
@@ -2055,7 +2054,6 @@ public:
 				//K_temp += R_temp;
 				Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic> h_x_cur = Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic>::Zero(dof_Measurement, n);
 				h_x_cur.topLeftCorner(dof_Measurement, kvalidjacs) = h_x_;
-				std::cout << "h_x_cur:(" << h_x_cur.rows() << "," << h_x_cur.cols() << ")\n";
 				/*
 				h_x_cur.col(0) = h_x_.col(0);
 				h_x_cur.col(1) = h_x_.col(1);
@@ -2170,7 +2168,7 @@ public:
 			{
 				dyn_share.converge = true;
 			}
-			printf("IEKF %d, |dx| %.6f, converged? %d\n", i, dx_.norm(), dyn_share.converge);
+			// printf("IEKF %d, |dx| %.6f, converged? %d\n", i, dx_.norm(), dyn_share.converge);
 			if(t > 1 || i == maximum_iter - 1)
 			{
 				L_ = P_;
