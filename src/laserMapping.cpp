@@ -178,8 +178,13 @@ inline void dump_lio_state_to_log(double lidar_end_time, const state_ikfom& stat
     // V3D rot_ang(Log(state_point.rot.toRotationMatrix()));
     fprintf(fp, "%.9lf ", lidar_end_time);
     // fprintf(fp, "%lf %lf %lf ", rot_ang(0), rot_ang(1), rot_ang(2));                   // Angle
-    fprintf(fp, "%.6lf %.6lf %.6lf ", state_point.pos(0), state_point.pos(1), state_point.pos(2)); // Pos  
-    fprintf(fp, "%.9lf %.9lf %.9lf %.9lf ", state_point.rot.coeffs()[0], state_point.rot.coeffs()[1], state_point.rot.coeffs()[2], state_point.rot.coeffs()[3]);                                        // omega  
+    V3D w_t_lidar = state_point.rot * state_point.offset_T_L_I + state_point.pos;
+    Eigen::Quaterniond w_r_lidar = state_point.rot * state_point.offset_R_L_I;
+    fprintf(fp, "%.6lf %.6lf %.6lf ", w_t_lidar(0), w_t_lidar(1), w_t_lidar(2)); // Pos
+    fprintf(fp, "%.9lf %.9lf %.9lf %.9lf ", w_r_lidar.coeffs()[0], w_r_lidar.coeffs()[1], w_r_lidar.coeffs()[2], w_r_lidar.coeffs()[3]);
+
+    // fprintf(fp, "%.6lf %.6lf %.6lf ", state_point.pos(0), state_point.pos(1), state_point.pos(2)); // Pos  
+    // fprintf(fp, "%.9lf %.9lf %.9lf %.9lf ", state_point.rot.coeffs()[0], state_point.rot.coeffs()[1], state_point.rot.coeffs()[2], state_point.rot.coeffs()[3]);                                        // omega  
     fprintf(fp, "%.6lf %.6lf %.6lf ", state_point.vel(0), state_point.vel(1), state_point.vel(2)); // Vel  
     // fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // Acc  
     fprintf(fp, "%.6lf %.6lf %.6lf ", state_point.bg(0), state_point.bg(1), state_point.bg(2));    // Bias_g  
