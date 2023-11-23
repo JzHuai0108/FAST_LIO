@@ -278,12 +278,10 @@ void lasermap_fov_segment()
         }
     }
     LocalMap_Points = New_LocalMap_Points;
-    if (!locmode) {
-        points_cache_collect();
-        double delete_begin = omp_get_wtime();
-        if(cub_needrm.size() > 0) kdtree_delete_counter = ikdtree.Delete_Point_Boxes(cub_needrm);
-        kdtree_delete_time = omp_get_wtime() - delete_begin;
-    }
+    points_cache_collect();
+    double delete_begin = omp_get_wtime();
+    if(cub_needrm.size() > 0) kdtree_delete_counter = ikdtree.Delete_Point_Boxes(cub_needrm);
+    kdtree_delete_time = omp_get_wtime() - delete_begin;
 }
 
 void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg) 
@@ -907,6 +905,11 @@ LaserMapping::LaserMapping(ros::NodeHandle &nh) {
             ("/Odometry", pub_path_queue_size);
     pubPath          = nh.advertise<nav_msgs::Path> 
             ("/path", pub_path_queue_size);
+
+    if (locmode) {
+        ikdtree.set_downsample_param(filter_size_map_min);
+        load_pcd_map();
+    }
 }
 
 LaserMapping::~LaserMapping() {
@@ -1003,7 +1006,8 @@ void LaserMapping::spinOnce() {
         flg_EKF_inited = (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME ? \
                         false : true;
         /*** Segment the map in lidar FOV ***/
-        lasermap_fov_segment();
+        if (!locmode)
+            lasermap_fov_segment();
 
         /*** downsample the feature points in a scan ***/
         downSizeFilterSurf.setInputCloud(feats_undistort);
@@ -1013,22 +1017,19 @@ void LaserMapping::spinOnce() {
         /*** initialize the map kdtree ***/
         if(ikdtree.Root_Node == nullptr)
         {
-            if (!locmode) {
-                if(feats_down_size > 5)
-                {
-                    ikdtree.set_downsample_param(filter_size_map_min);
-                    feats_down_world->resize(feats_down_size);
-                    for(int i = 0; i < feats_down_size; i++)
-                    {
-                        pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
-                    }
-                    ikdtree.Build(feats_down_world->points);
-                }
-                return;
-            } else {
+            if (locmode)
+                ROS_WARN("ikdtree should have been initialized ealier in locmode!");
+            if(feats_down_size > 5)
+            {
                 ikdtree.set_downsample_param(filter_size_map_min);
-                load_pcd_map();
+                feats_down_world->resize(feats_down_size);
+                for(int i = 0; i < feats_down_size; i++)
+                {
+                    pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
+                }
+                ikdtree.Build(feats_down_world->points);
             }
+            return;
         }
         int featsFromMapNum = ikdtree.validnum();
         kdtree_size_st = ikdtree.size();
@@ -1121,7 +1122,10 @@ void LaserMapping::spinOnce() {
             s_plot9[time_log_counter] = aver_time_consu;
             s_plot10[time_log_counter] = add_point_size;
             time_log_counter ++;
-            ROS_INFO("[ mapping ]: time: IMU + Map + Input Downsample: %0.6f ave match: %0.6f ave solve: %0.6f  ave ICP: %0.6f  map incre: %0.6f ave total: %0.6f icp: %0.6f construct H: %0.6f \n",t1-t0,aver_time_match,aver_time_solve,t3-t1,t5-t3,aver_time_consu,aver_time_icp, aver_time_const_H_time);
+            ROS_INFO(("[ mapping ]: time: IMU + Map + Input Downsample: %0.6f ave match: %0.6f ave solve: %0.6f  ave ICP: %0.6f  map incre: %0.6f "
+                "total: %0.6f ave total: %0.6f icp: %0.6f construct H: %0.6f \n"),
+                t1-t0,aver_time_match,aver_time_solve,t3-t1,t5-t3, t5 - t0, aver_time_consu,aver_time_icp, aver_time_const_H_time);
+            
             ext_euler = SO3ToEuler(state_point.offset_R_L_I);
             // fout_out << setw(20) << Measures.lidar_beg_time - first_lidar_time << " " << euler_cur.transpose() << " "
             //  << state_point.pos.transpose()<< " " << ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<<" "

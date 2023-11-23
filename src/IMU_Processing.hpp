@@ -210,7 +210,7 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 
   }
   state_ikfom init_state = kf_state.get_x();
   init_state.grav = S2(- mean_acc / mean_acc.norm() * G_m_s2);
-  
+
   //state_inout.rot = Eye3d; // Exp(mean_acc.cross(V3D(0, 0, -1 / scale_gravity)));
   init_state.bg  = mean_gyr;
   init_state.offset_T_L_I = Lidar_T_wrt_IMU;
@@ -219,11 +219,11 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 
     init_state.pos = W_t_imu;
     init_state.rot = SO3(W_R_imu);
     init_state.grav = S2(0, 0, -G_m_s2);
-    init_state.ba = mean_acc / mean_acc.norm() * G_m_s2 + W_R_imu.transpose() * Eigen::Vector3d(0, 0, -G_m_s2);
+    init_state.ba.setZero();
+    init_state.vel.setZero();
     ROS_INFO_STREAM("Init pose with external translation " << W_t_imu.transpose() << " and rotation\n"
          << W_R_imu << "\nand gravity " << init_state.grav.get_vect().transpose() << " and acc bias " << init_state.ba.transpose()
          << "\nand velocity " << init_state.vel.transpose() << " and gyro bias " << init_state.bg.transpose());
-    init_state.vel.setZero();
   }
   kf_state.change_x(init_state);
 
