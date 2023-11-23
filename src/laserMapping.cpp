@@ -541,7 +541,6 @@ void load_closest_pcd_map(const std::vector<V3D>& TLS_positions, std::vector<pai
     for(int mapIdx = 0; mapIdx < near_map; mapIdx++)
     {
         std::string map_filename = mapdir + "/" + std::to_string(vDist[mapIdx].first) + "_uniform.pcd";
-        // LOAD PCD MAP
         PointCloudXYZI::Ptr map(new PointCloudXYZI());
         pcl::io::loadPCDFile<PointType>(map_filename, *map);
         downSizeFilterMap.setInputCloud(map);
@@ -563,20 +562,32 @@ void load_closest_pcd_map(const std::vector<V3D>& TLS_positions, std::vector<pai
     //         PointToAdd.size(), map->points.size(), map_filename.c_str());
 }
 
-void load_front_N_pcd_map(int &all_maps_nums, bool &load_map_flag) 
-{
-    if(false == load_map_flag)
-    {
+void load_front_N_pcd_map(int all_maps_nums, bool &load_map_flag) {
+    if (!load_map_flag) {
         return;
     }
 
     PointVector PointToAdd;
     pcl::VoxelGrid<pcl::PointXYZI> downSizeFilter;
     downSizeFilter.setLeafSize(filter_size_map_min, filter_size_map_min, filter_size_map_min);
-    for(int mapIdx = 1; mapIdx < all_maps_nums + 1; mapIdx++)
-    {
-        std::string map_filename = mapdir + "/" + std::to_string(mapIdx) + "_uniform.pcd";
-        // LOAD PCD MAP
+    std::string check_filename = mapdir + "/1_uniform.pcd";
+    std::string suffix = "_uniform.pcd";
+    // check if the map file exists
+    if (access(check_filename.c_str(), 0) == -1) {
+        check_filename = mapdir + "/1.pcd";
+        if (access(check_filename.c_str(), 0) == -1) {
+            ROS_ERROR("Map file %s not exist!", check_filename.c_str());
+            return;
+        } else {
+            suffix = ".pcd";
+        }
+    }
+    for(int mapIdx = 1; mapIdx < all_maps_nums + 1; mapIdx++) {
+        std::string map_filename = mapdir + "/" + std::to_string(mapIdx) + suffix;
+        if (access(map_filename.c_str(), 0) == -1) {
+            ROS_WARN("Map file %s not exist!", map_filename.c_str());
+            break;
+        }
         pcl::PointCloud<pcl::PointXYZI>::Ptr map(new pcl::PointCloud<pcl::PointXYZI>());
         pcl::io::loadPCDFile<pcl::PointXYZI>(map_filename, *map);
         downSizeFilter.setInputCloud(map);
@@ -598,7 +609,6 @@ void load_front_N_pcd_map(int &all_maps_nums, bool &load_map_flag)
         ROS_INFO("Load pcd map of %s, size: %zu.", map_filename.c_str(), PointToAdd.size());
     }
 
-    std::cout << "~~~update TCL_PCD!" << std::endl;
     ikdtree.Build(PointToAdd);
     load_map_flag = false;
     // ROS_INFO("Load pcd map of %zu points downsampled from %zu from %s.", 
@@ -608,7 +618,7 @@ void load_front_N_pcd_map(int &all_maps_nums, bool &load_map_flag)
         PointCloudXYZI::Ptr filtered_pc(new PointCloudXYZI());
         pcl::VoxelGrid<PointType> sor;
         sor.setInputCloud(pc);
-        sor.setLeafSize(0.5, 0.5, 0.5);
+        sor.setLeafSize(1.0, 1.0, 1.0);
         // sor.setMinimumPointsNumberPerVoxel(1);
         sor.filter(*filtered_pc);
         return filtered_pc;

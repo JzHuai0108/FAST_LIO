@@ -11,10 +11,10 @@ preprocess:
     blind: 2.0                          # the lidar is unable to measure distances less than blind.
 
 mapping:
-    acc_cov: 0.01               # \sigma^2*frequency
-    gyr_cov: 0.01
-    b_acc_cov: 0.0001
-    b_gyr_cov: 0.0001
+    acc_cov: 0.05               # \sigma^2*frequency
+    gyr_cov: 0.05
+    b_acc_cov: 0.001
+    b_gyr_cov: 0.001
     fov_degree:    180
     det_range:     200.0
     extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic

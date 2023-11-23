@@ -23,7 +23,7 @@
     <param name="load_closest_N_maps_en" type="bool" value="0"/>
     <param name="load_closest_N_maps" type="int" value="3"/>
     <param name="load_front_N_maps_en" type="bool" value="1"/>
-    <param name="load_front_N_maps" type="int" value="26"/>
+    <param name="load_front_N_maps" type="int" value="100"/>
 
     <param name="feature_extract_enable" type="bool" value="0"/>
     <param name="point_filter_num" type="int" value="1"/>
@@ -42,6 +42,6 @@
     </group>
 
     <group if="$(arg playbag)">
-    <node pkg="rosbag" type="play" name="rosbag" args="$(arg bagfile)" />
+    <node pkg="rosbag" type="play" name="rosbag" args="$(arg bagfile)" required="true" />
     </group>
 </launch>
