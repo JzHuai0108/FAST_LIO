@@ -1123,9 +1123,8 @@ void LaserMapping::spinOnce() {
             s_plot10[time_log_counter] = add_point_size;
             time_log_counter ++;
             ROS_INFO(("[ mapping ]: time: IMU + Map + Input Downsample: %0.6f ave match: %0.6f ave solve: %0.6f  ave ICP: %0.6f  map incre: %0.6f "
-                "total: %0.6f ave total: %0.6f icp: %0.6f construct H: %0.6f \n"),
+                "total: %0.6f ave total: %0.6f icp: %0.6f construct H: %0.6f."),
                 t1-t0,aver_time_match,aver_time_solve,t3-t1,t5-t3, t5 - t0, aver_time_consu,aver_time_icp, aver_time_const_H_time);
-            
             ext_euler = SO3ToEuler(state_point.offset_R_L_I);
             // fout_out << setw(20) << Measures.lidar_beg_time - first_lidar_time << " " << euler_cur.transpose() << " "
             //  << state_point.pos.transpose()<< " " << ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<<" "
