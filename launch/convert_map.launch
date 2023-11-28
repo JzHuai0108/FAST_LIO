@@ -1,0 +1,21 @@
+<launch>
+<!-- Launch file to convert the scans.pcd to yaml, pgm, and _ds.pcd -->
+
+	<arg name="rviz" default="true" />
+	<arg name="pcdmap" default="$(find fast_lio)/PCD/scans.pcd" />
+	<arg name="thre_z_min" default="0.2" />
+	<arg name="thre_z_max" default="0.6" />
+
+	<node pkg="pcd2pgm" type="pcd2topic" name="pcd2topic" output="screen">
+		<param name="pcd_file" value="$(arg pcdmap)" />
+		<param name="thre_z_min" value="$(arg thre_z_min)" />
+		<param name="thre_z_max" value="$(arg thre_z_max)" />
+	</node>
+
+	<node pkg="map_server" type="map_saver" name="map_saver" output="screen" args="-f $(find fast_lio)/PCD/scans" />
+
+	<group if="$(arg rviz)">
+	<node launch-prefix="nice" pkg="rviz" type="rviz" name="fastlio_rviz" args="-d $(find fast_lio)/rviz_cfg/loam_livox.rviz" />
+	</group>
+
+</launch>
