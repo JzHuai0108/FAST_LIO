@@ -484,14 +484,15 @@ void map_incremental()
 void load_pcd_map() {
     PointCloudXYZI::Ptr map(new PointCloudXYZI());
     pcl::io::loadPCDFile<PointType>(pcdmap, *map);
-    downSizeFilterMap.setInputCloud(map);
-    PointCloudXYZI::Ptr map_ds(new PointCloudXYZI());
-    downSizeFilterMap.filter(*map_ds);
+    // we downsample beforehand to improve efficiency.
+    // downSizeFilterMap.setInputCloud(map);
+    // PointCloudXYZI::Ptr map_ds(new PointCloudXYZI());
+    // downSizeFilterMap.filter(*map_ds);
     PointVector PointToAdd;
-    PointToAdd.reserve(map_ds->points.size());
-    for (int i = 0; i < map_ds->points.size(); i++)
+    PointToAdd.reserve(map->points.size());
+    for (int i = 0; i < map->points.size(); i++)
     {
-        PointToAdd.push_back(map_ds->points[i]);
+        PointToAdd.push_back(map->points[i]);
     }
     ikdtree.Build(PointToAdd);
     ROS_INFO("Load pcd map of %zu points downsampled from %zu from %s.", 

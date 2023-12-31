@@ -49,7 +49,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(velodyne_ros::Point,
     (float, z, z)
     (float, intensity, intensity)
     (float, time, time)
-    (uint16_t, ring, ring)
+    (std::uint16_t, ring, ring)
 )
 
 namespace livox_ros {
@@ -69,8 +69,8 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(livox_ros::Point,
     (float, y, y)
     (float, z, z)
     (float, intensity, intensity)
-    (uint8_t, tag, tag)
-    (uint8_t, line, line)
+    (std::uint8_t, tag, tag)
+    (std::uint8_t, line, line)
     (double, timestamp, timestamp)
 )
 
