@@ -24,6 +24,7 @@ public:
     ros::Subscriber sub_imu;
     ros::Publisher pubLaserCloudFull;
     ros::Publisher pubLaserCloudFull_body;
+    ros::Publisher pubLaserCloudLidar;
     ros::Publisher pubLaserCloudEffect;
     ros::Publisher pubLaserCloudMap;
     ros::Publisher pubOdomAftMapped;

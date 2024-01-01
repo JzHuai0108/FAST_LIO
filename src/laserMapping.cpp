@@ -96,7 +96,7 @@ int    effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count =
 int    iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
 bool   point_selected_surf[100000] = {0};
 bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
-bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
+bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, scan_lidar_pub_en = false;
 
 vector<vector<int>>  pointSearchInd_surf; 
 vector<BoxPointType> cub_needrm;
@@ -574,6 +574,16 @@ void publish_frame_body(const ros::Publisher & pubLaserCloudFull_body)
     publish_count -= PUBFRAME_PERIOD;
 }
 
+void publish_frame_lidar(const ros::Publisher &pubLaserCloudLidar) {
+    PointCloudXYZI::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort : feats_down_body);
+    int size = laserCloudFullRes->points.size();
+    sensor_msgs::PointCloud2 laserCloudLidarMsg;
+    pcl::toROSMsg(*laserCloudFullRes, laserCloudLidarMsg);
+    laserCloudLidarMsg.header.stamp = ros::Time().fromSec(lidar_end_time);
+    laserCloudLidarMsg.header.frame_id = "livox_frame";
+    pubLaserCloudLidar.publish(laserCloudLidarMsg);
+}
+
 void publish_effect_world(const ros::Publisher & pubLaserCloudEffect)
 {
     PointCloudXYZI::Ptr laserCloudWorld( \
@@ -785,6 +795,7 @@ LaserMapping::LaserMapping(ros::NodeHandle &nh) {
     nh.param<bool>("publish/scan_publish_en",scan_pub_en, true);
     nh.param<bool>("publish/dense_publish_en",dense_pub_en, true);
     nh.param<bool>("publish/scan_bodyframe_pub_en",scan_body_pub_en, true);
+    nh.param<bool>("publish/scan_lidar_pub_en", scan_lidar_pub_en, false);
     nh.param<int>("max_iteration",NUM_MAX_ITERATIONS,4);
     nh.param<string>("map_file_path",map_file_path,"");
     nh.param<string>("common/lid_topic",lid_topic,"/livox/lidar");
@@ -898,6 +909,8 @@ LaserMapping::LaserMapping(ros::NodeHandle &nh) {
             ("/cloud_registered", pub_cloud_queue_size);
     pubLaserCloudFull_body = nh.advertise<sensor_msgs::PointCloud2>
             ("/cloud_registered_body", pub_cloud_queue_size);
+    pubLaserCloudLidar = nh.advertise<sensor_msgs::PointCloud2>
+            ("/cloud_lidar", pub_cloud_queue_size);
     pubLaserCloudEffect = nh.advertise<sensor_msgs::PointCloud2>
             ("/cloud_effected", pub_cloud_queue_size);
     pubLaserCloudMap = nh.advertise<sensor_msgs::PointCloud2>
@@ -1098,6 +1111,7 @@ void LaserMapping::spinOnce() {
         if (path_en)                         publish_path(pubPath);
         if (scan_pub_en || pcd_save_en)      publish_frame_world(pubLaserCloudFull);
         if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
+        if (scan_lidar_pub_en)               publish_frame_lidar(pubLaserCloudLidar);
         // publish_effect_world(pubLaserCloudEffect);
 
         /*** Debug variables ***/
