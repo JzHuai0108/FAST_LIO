@@ -4,12 +4,12 @@
 	<arg name="rviz" default="true" />
 	<arg name="bagfile" default="" />
 	<arg name="playbag" default="true" />
-	<arg name="mapdir" default="" />
+	<arg name="tls_dir" default="" />
 	<arg name="locmode" default="false" />
 	<rosparam command="load" file="$(find fast_lio)/config/mid360.yaml" />
 
     <param name="locmode" type="bool" value="$(arg locmode)" />
-	<param name="mapdir" type="string" value="$(arg mapdir)" />
+	<param name="tls_dir" type="string" value="$(arg tls_dir)" />
 	<param name="feature_extract_enable" type="bool" value="0"/>
 	<param name="point_filter_num" type="int" value="3"/>
 	<param name="max_iteration" type="int" value="3" />

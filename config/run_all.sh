@@ -44,12 +44,12 @@ for bag in "${bagnames[@]}"; do
   pathtmp=${bag#*/}
   echo "init_lidar_pose_file: $bagpath/${bag%%/*}/trans/${pathtmp%_*}_lidar_to_TLS.txt"
   mkdir -p $outputpath/$bag
-  roslaunch fast_lio mapping_hesai32_whu_handheld.launch \
-       bagfile:=$bagpath/$bag.bag \
-       mapdir:=$mappath \
-       locmode:=true \
-       init_lidar_pose_file:=$bagpath/${bag%%/*}/trans/${pathtmp%_*}_lidar_to_TLS.txt \
-       save_directory:=$outputpath/$bag/
+  roslaunch fast_lio loc_hesai32_handheld.launch \
+      configyaml:=hesai32_mti3dk_handheld.yaml \
+      bagfile:=$bagpath/$bag.bag \
+      tls_dir:=$mappath \
+      init_lidar_pose_file:=$bagpath/${bag%%/*}/trans/${pathtmp%_*}_lidar_to_TLS.txt \
+      save_dir:=$outputpath/$bag/
 done
 }
 

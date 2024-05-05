@@ -50,7 +50,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(hesai_ros::Point,
     (float, z, z)
     (float, intensity, intensity)
     (double, timestamp, timestamp)
-    (uint16_t, ring, ring)
+    (std::uint16_t, ring, ring)
 )
 
 namespace velodyne_ros {
@@ -67,7 +67,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(velodyne_ros::Point,
     (float, y, y)
     (float, z, z)
     (float, intensity, intensity)
-    (uint16_t, ring, ring)
+    (std::uint16_t, ring, ring)
     (float, time, time)
 )
 
