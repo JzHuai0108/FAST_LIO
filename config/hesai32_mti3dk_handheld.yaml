@@ -36,6 +36,7 @@ publish:
     scan_bodyframe_pub_en: true  # output the point cloud scans in a body frame
     publish_cloud_in_imu_frame: false # output the point cloud scans in IMU-frame or lidar-frame
     output_ref_frame: lidar
+    show_submap: false
 
 pcd_save:
     pcd_save_en: false

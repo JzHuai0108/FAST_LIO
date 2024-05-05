@@ -933,6 +933,7 @@ private:
     std::string output_ref_frame = "lidar"; // output reference frame, "imu" or "lidar"
     double init_pos_noise = 0.0;
     double init_rot_noise = 0.0;
+    bool show_submap = false;
 
 public:
 int initializeSystem(ros::NodeHandle &nh) {
@@ -971,6 +972,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
     nh.param<bool>("locmode", locmode, false);
     nh.param<std::string>("publish/output_ref_frame", output_ref_frame, "lidar");
+    nh.param<bool>("publish/show_submap", show_submap, false);
 
     nh.param<std::string>("tls_dir", tls_dir, "");
     nh.param<std::string>("init_lidar_pose_file", init_lidar_pose_file, "");
@@ -991,7 +993,8 @@ int initializeSystem(ros::NodeHandle &nh) {
     cout << "init_world_t_imu: " << init_world_t_imu[0] << " " << init_world_t_imu[1] << " " << init_world_t_imu[2] << endl;
     cout << "init_world_rpy_imu: " << init_world_rpy_imu[0] << " " << init_world_rpy_imu[1] << " " << init_world_rpy_imu[2] << endl;
     cout << "init_world_R_imu: " << endl << init_world_R_imu << endl;
-    cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
+    cout << "p_pre->lidar_type "<<p_pre->lidar_type<<endl;
+    cout << "show submap " << show_submap << endl;
     if (state_log_dir.empty()) {
       cerr << "You have to provide save_dir to make the saving functions work properly." << std::endl;
       return 0;
@@ -1185,10 +1188,10 @@ int initializeSystem(ros::NodeHandle &nh) {
 
             V3D ext_euler = SO3ToEuler(state_point.offset_R_L_I);
             fout_pre<<setw(20)<<Measures.lidar_beg_time - first_lidar_time<<" "<<euler_cur.transpose()<<" "<< state_point.pos.transpose()<<" "<<ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<< " " << state_point.vel.transpose() \
-            <<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<< endl;
+                    <<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<< endl;
 
-            if(1) // If you need to see map point, change to "if(1)"
-            { // This can drastically slow down the program.
+            if (show_submap) {// If you need to see map point
+                // But this can drastically slow down the program.
                 PointVector ().swap(ikdtree.PCL_Storage);
                 ikdtree.flatten(ikdtree.Root_Node, ikdtree.PCL_Storage, NOT_RECORD);
                 featsFromMap->clear();
