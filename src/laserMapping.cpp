@@ -61,6 +61,7 @@
 #include <boost/foreach.hpp>
 
 #include <livox_ros_driver2/CustomMsg.h>
+#include "dist_checkup.h"
 #include "preprocess.h"
 #include <ikd-Tree/ikd_Tree.h>
 
@@ -69,6 +70,7 @@
 #define LASER_POINT_COV     (0.001)
 #define MAXN                (720000)
 #define PUBFRAME_PERIOD     (20)
+typedef std::vector<Eigen::Matrix<double, 5, 1>, Eigen::aligned_allocator<Eigen::Matrix<double, 5, 1>>> TlsPositionVector; // [x, y, z, projectid, scanid]
 
 /*** Time Log Variables ***/
 double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0, kdtree_delete_time = 0.0;
@@ -127,7 +129,6 @@ pcl::VoxelGrid<pcl::PointXYZ> downSizeFilterMap;
 KD_TREE<PointType> ikdtree;
 bool locmode = false;
 std::string tls_dir = "";
-std::string tls_project_dir = "";
 std::string init_lidar_pose_file = "";
 vector<double> init_world_t_imu(3, 0.0);
 vector<double> init_world_rpy_imu(3, 0.0);
@@ -477,44 +478,55 @@ void map_incremental()
     kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
-int min_dis_id = -1;
-void load_pcd_map(const std::vector<V3D>& TLS_positions, int projectid) {
+int load_close_tls_scans(const TlsPositionVector &TLS_positions, int prev_nearest_scan_idx) {
     // find the nearest position in the TLS map
     int nearest_index = -1;
     double min_distance = std::numeric_limits<double>::max();
     for (int i = 0; i < TLS_positions.size(); i++)
     {
-        V3D dist_vec = state_point.pos - TLS_positions[i];
+        V3D dist_vec = state_point.pos - TLS_positions[i].head(3);
         dist_vec.z() = 0;
         double distance = dist_vec.norm();
         if (distance < min_distance)
         {
             min_distance = distance;
-            nearest_index = i+1;
+            nearest_index = i;
         }
     }
 
-    if (nearest_index == min_dis_id){
-        return;
+    if (nearest_index == prev_nearest_scan_idx) { // already loaded, no need to load again.
+        return nearest_index;
     }
 
     std::string map_filename;
     pcl::PointCloud<pcl::PointXYZ>::Ptr TCL_submap(new pcl::PointCloud<pcl::PointXYZ>());
 
     size_t count = 0;
+    int target_project_id = int(TLS_positions[nearest_index][3]);
+    std::vector<int> loadedscans;
+    loadedscans.reserve(3);
     for (int i = nearest_index - 1; i <= nearest_index + 1; i++){
-        if (i < 1 || i > TLS_positions.size()){
+        if (i < 0 || i >= TLS_positions.size()){
             continue;
         }
+        int projectid = int(TLS_positions[i][3]);
+        if (projectid != target_project_id)
+            continue;
+        int scanid = int(TLS_positions[i][4]);
         if (projectid == 1) {
-            map_filename = tls_project_dir + "/" + std::to_string(i) + ".pcd";
-        } else {
-            map_filename = tls_project_dir + "/" + std::to_string(i) + "_uniform.pcd";
+            map_filename = tls_dir + "/project1/regis/" + std::to_string(scanid) + ".pcd";
+        } else if (projectid == 2) {
+            map_filename = tls_dir + "/project2/regis/" + std::to_string(scanid) + "_uniform.pcd";
         }
+        loadedscans.push_back(scanid);
         pcl::PointCloud<pcl::PointXYZ>::Ptr map(new pcl::PointCloud<pcl::PointXYZ>());
         pcl::io::loadPCDFile<pcl::PointXYZ>(map_filename, *map);
         *TCL_submap += *map;
         count++;
+    }
+    std::cout << "Loaded " << loadedscans.size() << " new scans: ";
+    for (size_t j = 0; j < loadedscans.size(); ++j) {
+        std::cout << j << ":" << loadedscans[j] << " ";
     }
 
     downSizeFilterMap.setInputCloud(TCL_submap);
@@ -530,9 +542,17 @@ void load_pcd_map(const std::vector<V3D>& TLS_positions, int projectid) {
         PointToAdd.push_back(point);
     }
     ikdtree.Build(PointToAdd);
-    ROS_INFO("New nearest id %d, old nearest id %d, loaded %zu frames, %zu points downsampled from %zu.", 
-            nearest_index, min_dis_id, count, PointToAdd.size(), TCL_submap->points.size());
-    min_dis_id = nearest_index;
+    if (prev_nearest_scan_idx >= 0) {
+        ROS_INFO(("New nearest id %d, project id %d, old nearest id %d, project id %d, "
+             "loaded %zu frames, %zu points downsampled from %zu."), 
+            nearest_index, (int)TLS_positions[nearest_index][3], prev_nearest_scan_idx, 
+            (int)TLS_positions[prev_nearest_scan_idx][3], count, PointToAdd.size(), TCL_submap->points.size());
+    } else {
+        ROS_INFO(("New nearest id %d, project id %d, "
+             "loaded %zu frames, %zu points downsampled from %zu."), 
+            nearest_index, (int)TLS_positions[nearest_index][3], count, PointToAdd.size(), TCL_submap->points.size());
+    }
+    return nearest_index;
 }
 
 PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI(500000, 1));
@@ -849,7 +869,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 }
 
 bool load_initial_lidar_pose(const std::string &init_lidar_pose_file, V3D &world_t_lidar,
-                             M3D &world_R_lidar, int &TLS_project_id) {
+                             M3D &world_R_lidar) {
     if (!init_lidar_pose_file.empty()) {
         std::ifstream in(init_lidar_pose_file);
         if (in.is_open()) {
@@ -862,8 +882,8 @@ bool load_initial_lidar_pose(const std::string &init_lidar_pose_file, V3D &world
             world_R_lidar << val[0], val[1], val[2],
                              val[4], val[5], val[6],
                              val[8], val[9], val[10];
-            TLS_project_id = int(val[12]);
-            std::cout << "TLS_project_id: " << TLS_project_id << ", world_t_lidar:"
+            int TLS_project_id = int(val[12]);
+            std::cout << "TLS project for the start point: " << TLS_project_id << ", world_t_lidar:"
                       << world_t_lidar.transpose() << "\nworld_R_lidar\n" << world_R_lidar << std::endl;
             return true;
         } else {
@@ -884,35 +904,43 @@ void add_pose_noise(V3D &pos, M3D &rot, double pos_noise, double rot_noise) {
               << ", rot noise vec " << rot_noise_vec.transpose() << std::endl;
 }
 
-size_t load_submap_poses(const std::string &tls_project_dir, std::vector<V3D> &TLS_positions) {
-    V3D position;
+size_t load_tls_project_poses(const std::string &tls_project_dir, TlsPositionVector &TLS_positions) {
+    Eigen::Matrix<double, 5, 1> position_id;
     string centerfile = tls_project_dir + "/centers.txt";
+    int projectid = 0;
+    if (tls_project_dir.find("project1") != string::npos) {
+        projectid = 1;
+    } else if (tls_project_dir.find("project2") != string::npos) {
+        projectid = 2;
+    } else {
+        cout << "TLS project id not found in the directory name" << endl;
+        return 0;
+    }
     ifstream stream(centerfile.c_str());
     if (!stream.is_open()) {
         cout << centerfile << " doesn't exist" << endl;
         return 0;
     }
     string line;
+    TLS_positions.reserve(TLS_positions.size() + 65);
     while (getline(stream, line)) {
-        if (line[0] == '#') continue;
+        if (line.empty() || line[0] == '#') continue;
         stringstream ss(line);
-        double temp;
-        for (int i = 0; i < 4; ++i) {
-            ss >> temp;
-            if (i == 0) continue;
-            position[i-1] = temp;
-        }
-        // std::cout << position[0] << " " << position[1] << " " << position[2] << std::endl;
-        TLS_positions.push_back(position);
+        int scanid;
+        ss >> scanid >> position_id[0] >> position_id[1] >> position_id[2];
+        position_id[3] = projectid;
+        position_id[4] = scanid;
+        TLS_positions.push_back(position_id);
     }
-    std::cout << "TLS_positions.size: " << TLS_positions.size() << std::endl;
+    std::cout << "TLS_positions, 0: " << TLS_positions.front().transpose()
+              << ", " << TLS_positions.size() - 1 << ": " << TLS_positions.back().transpose() << std::endl;
     return TLS_positions.size();
 }
 
 class LocToTlsCluster {
 private:
     ros::Time lastMsgTime;
-    vector<V3D> TLS_positions;
+    TlsPositionVector tls_position_ids;
     ofstream fout_pre, fout_out;
     FILE *fp = NULL;
 
@@ -927,13 +955,16 @@ private:
 
     int frame_num = 0;
     double aver_time_consu = 0, aver_time_icp = 0, aver_time_match = 0, aver_time_incre = 0, aver_time_solve = 0, aver_time_const_H_time = 0;
-    int TLS_project_id = 0; // TLS project id, 1 or 2.
 
     Pose3d B_T_S; // transform the output reference frame from B frame to S frame.
     std::string output_ref_frame = "lidar"; // output reference frame, "imu" or "lidar"
     double init_pos_noise = 0.0;
     double init_rot_noise = 0.0;
     bool show_submap = false;
+    std::string tls_ref_traj_files = "";
+    double tls_dist_thresh = 8; // the max distance to the tls trajectory to abort the odometer.
+    DistCheckup dist_checkup;
+    int nearest_scan_idx = -1; // scan idx within the tls_position_ids.
 
 public:
 int initializeSystem(ros::NodeHandle &nh) {
@@ -976,6 +1007,8 @@ int initializeSystem(ros::NodeHandle &nh) {
 
     nh.param<std::string>("tls_dir", tls_dir, "");
     nh.param<std::string>("init_lidar_pose_file", init_lidar_pose_file, "");
+    nh.param<std::string>("tls_ref_traj_files", tls_ref_traj_files, "");
+    nh.param<double>("mapping/tls_dist_thresh", tls_dist_thresh, 8);
     nh.param<double>("mapping/init_pos_noise", init_pos_noise, 0.0);
     nh.param<double>("mapping/init_rot_noise", init_rot_noise, 0.0);
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
@@ -1080,20 +1113,34 @@ int initializeSystem(ros::NodeHandle &nh) {
 //------------------------------------------------------------------------------------------------------
     signal(SIGINT, SigHandle);
     lastMsgTime = ros::Time::now();
-    min_dis_id = -1;
+    nearest_scan_idx = -1;
 
     if (locmode) {
         std::cout << "init_lidar_pose_file: " << init_lidar_pose_file << std::endl;
         V3D init_w_t_lidar;
         M3D init_w_R_lidar;
-        load_initial_lidar_pose(init_lidar_pose_file, init_w_t_lidar, init_w_R_lidar, TLS_project_id);
+        load_initial_lidar_pose(init_lidar_pose_file, init_w_t_lidar, init_w_R_lidar);
         add_pose_noise(init_w_t_lidar, init_w_R_lidar, init_pos_noise, init_rot_noise);
         init_world_R_imu = init_w_R_lidar * Lidar_R_wrt_IMU.transpose();
         init_world_t_imu_vec = init_w_t_lidar - init_world_R_imu * Lidar_T_wrt_IMU;
-        tls_project_dir = tls_dir + "/project" + std::to_string(TLS_project_id) + "/regis";
-        std::cout << "TLS project dir: " << tls_project_dir << std::endl;
-        load_submap_poses(tls_project_dir, TLS_positions);
+        std::cout << "TLS dir: " << tls_dir << std::endl;
+        std::string tls_project_dir = tls_dir + "/project1/regis";
+        load_tls_project_poses(tls_project_dir, tls_position_ids);
+        tls_project_dir = tls_dir + "/project2/regis";
+        load_tls_project_poses(tls_project_dir, tls_position_ids);
+
         ikdtree.set_downsample_param(filter_size_map_min);
+        if (!tls_ref_traj_files.empty()) {
+            std::vector<std::string> filenames;
+            boost::split(filenames, tls_ref_traj_files, boost::is_any_of(";"));
+            ROS_INFO("TLS reference trajectory files: %s", tls_ref_traj_files.c_str());
+            ROS_INFO("TLS distance threshold: %.2f", tls_dist_thresh);
+            Trajectory ref_traj;
+            load_ref_traj(filenames, ref_traj);
+            dist_checkup.initialize(ref_traj, tls_dist_thresh);
+        } else {
+            ROS_WARN("No TLS reference trajectory files provided, TLS checkup disabled.");
+        }
     }
     return 1;
 }
@@ -1101,11 +1148,11 @@ int initializeSystem(ros::NodeHandle &nh) {
     bool spinOnce() {
         // return true if to exit, false otherwise.
         if (flg_exit) return true;
-        if(!flg_first_scan && ros::Time::now()-lastMsgTime > ros::Duration(20.0)){
-            ros::shutdown();
-            flg_exit = true;
-            return true; //20s no data, exit
-        }
+        // if(!flg_first_scan && ros::Time::now()-lastMsgTime > ros::Duration(20.0)){
+        //     ros::shutdown();
+        //     flg_exit = true;
+        //     return true; //20s no data, exit
+        // }
         ros::spinOnce();
         if(sync_packages(Measures)) 
         {
@@ -1152,7 +1199,7 @@ int initializeSystem(ros::NodeHandle &nh) {
             feats_down_size = feats_down_body->points.size();
             if (locmode) {
                 ikdtree.set_downsample_param(filter_size_map_min);
-                load_pcd_map(TLS_positions, TLS_project_id);
+                nearest_scan_idx = load_close_tls_scans(tls_position_ids, nearest_scan_idx);
             }
             /*** initialize the map kdtree ***/
             if(ikdtree.Root_Node == nullptr)
@@ -1226,7 +1273,16 @@ int initializeSystem(ros::NodeHandle &nh) {
             /*** add the feature points to map kdtree ***/
             
             t3 = omp_get_wtime();
-            if (!locmode) {
+            if (locmode) {
+                Eigen::Vector4d timed_position;
+                timed_position[0] = lidar_end_time;
+                timed_position.segment(1, 3) = pos_lid;
+                bool inbound = dist_checkup.check(timed_position);
+                if (!inbound) {
+                    ROS_WARN("The lidar pose is out of the TLS trajectory, abort the odometer.");
+                    return true;
+                }
+            } else {
                 map_incremental();
             }
             t5 = omp_get_wtime();

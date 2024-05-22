@@ -9,6 +9,7 @@
     <arg name="locmode" default="true" />
     <arg name="init_lidar_pose_file" default="" />
     <arg name="save_dir" default="$(find fast_lio)/Log" />
+    <arg name="tls_ref_traj_files" default="" />
 
     <rosparam command="load" file="$(find fast_lio)/config/$(arg configyaml)" />
 
@@ -16,6 +17,7 @@
     <param name="bagfile" type="string" value="$(arg bagfile)" />
     <param name="tls_dir" type="string" value="$(arg tls_dir)" />
     <param name="init_lidar_pose_file" type="string" value="$(arg init_lidar_pose_file)" />
+    <param name="tls_ref_traj_files" type="string" value="$(arg tls_ref_traj_files)" />
     <param name="feature_extract_enable" type="bool" value="0"/>
     <param name="point_filter_num" type="int" value="20"/>
     <param name="max_iteration" type="int" value="10" />
