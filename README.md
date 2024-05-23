@@ -75,6 +75,36 @@ Eigen  >= 3.3.4, Follow [Eigen Installation](http://eigen.tuxfamily.org/index.ph
 ### 1.3. **livox_ros_driver2**
 Follow [livox_ros_driver2 Installation](https://github.com/Livox-SDK/livox_ros_driver2).
 
+
+```
+# livox sdk2
+
+git clone https://github.com/Livox-SDK/Livox-SDK2.git
+cd ./Livox-SDK2/
+mkdir build
+cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/home/$USER/Documents/slam_devel/
+make -j4
+make install
+```
+
+see [robostack](https://robostack.github.io/GettingStarted.html) to create a virtual ros env.
+
+```
+# livox ros driver2
+cd fastlioslam_ws/src/livox_ros_driver2
+conda activate ros_env # or mamba activate ros_env
+./build.sh ROS1 "$HOME/Documents/slam_devel" "$HOME/miniconda3/envs/ros_env"
+
+# error: /usr/bin/env: ‘python’: No such file or directory
+sudo apt install python-is-python3
+
+cd fastlioslam_ws
+source devel/setup.bash
+catkin build fast_lio -DCMAKE_INSTALL_PREFIX="$HOME/Documents/slam_devel" -DCMAKE_PREFIX_PATH="$HOME/miniconda3/envs/ros_env;$HOME/Documents/lidar/fastlioslam_ws/devel"
+
+```
+
 *Remarks:*
 - Since the FAST-LIO must support Livox serials LiDAR firstly, so the **livox_ros_driver2** must be installed and **sourced** before run any FAST-LIO luanch file.
 - How to source? The easiest way is add the line ``` source $Livox_ros_driver2_dir$/devel/setup.bash ``` to the end of file ``` ~/.bashrc ```, where ``` $Livox_ros_driver2_dir$ ``` is the directory of the livox ros driver workspace (should be the ``` ws_livox ``` directory if you completely followed the livox official document).
@@ -159,6 +189,7 @@ C. We recommend to set the **extrinsic_est_en** to false if the extrinsic is giv
 ### 3.1 For Avia (TODO: update this section for livox_ros_driver2)
 Connect to your PC to Livox Avia LiDAR by following  [Livox-ros-driver installation](https://github.com/Livox-SDK/livox_ros_driver), then
 ```
+    mamba activate ros_env
     cd ~/$FAST_LIO_ROS_DIR$
     source devel/setup.bash
     roslaunch fast_lio mapping_avia.launch

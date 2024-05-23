@@ -3,13 +3,15 @@
  * @brief Check if a trajectory is in the TLS map
  */
 #include "dist_checkup.h"
+#include <iomanip>
+#include <iostream>
 
 int main(int argc, char **argv) {
     std::string path_to_traj;
     std::string output_file;
     std::vector<std::string> tls_ref_traj_files = 
-        {"./src/FAST_LIO_SLAM/FAST_LIO/data/20231109/data1/scan_states.txt", 
-         "./src/FAST_LIO_SLAM/FAST_LIO/data/20231109/data2/scan_states.txt"};
+        {"./src/FAST_LIO/data/20231109/data1/scan_states.txt", 
+         "./src/FAST_LIO/data/20231109/data2/scan_states.txt"};
 
     if (argc < 2) {
         std::cerr << "Usage: check_traj_in_tls <path_to_traj> [dist_threshold=8]" << std::endl;

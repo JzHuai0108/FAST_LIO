@@ -1,11 +1,11 @@
 #!/bin/bash
 
-datadir="/media/jhuai/BackupPlus/jhuai/data/homebrew/zongmu"
-# ws_dir="/media/jhuai/docker/lidarslam/catkin_fastlio_slam"
-ws_dir="/media/jhuai/docker/lidarslam/fastlio_slam_ws_rel"
-result_dir="/media/jhuai/BackupPlus/jhuai/results/fastlio_loc"
-tls_dir="/media/jhuai/BackupPlus/jhuai/data/homebrew/whu_tls_1030"
-init_pose_dir="/media/jhuai/BackupPlus/jhuai/results/front_back_snapshots"
+datadir="/media/$USER/BackupPlus/jhuai/data/homebrew/zongmu"
+ws_dir="/media/$USER/docker/lidarslam/fastlio_slam_ws_rel"
+ws_dir="/home/$USER/Documents/lidar/fastlioslam_ws"
+result_dir="/media/$USER/BackupPlus/jhuai/results/fastlio_loc"
+tls_dir="/media/$USER/BackupPlus/jhuai/data/homebrew/whu_tls_1030"
+init_pose_dir="/media/$USER/BackupPlus/jhuai/results/front_back_snapshots"
 
 bags202312=(20231201/data2
       20231201/data3
@@ -20,7 +20,7 @@ bags202312=(20231201/data2
       20231213/data4
       20231213/data5)
 
-bag20231105=(
+bags20231105=(
 20231105/data1
 20231105/data2
 20231105/data3
@@ -29,23 +29,23 @@ bag20231105=(
 20231105/data6
 20231105/data7)
 
-bag20231105_aft=(20231105_aft/data1
+bags20231105_aft=(20231105_aft/data1
 20231105_aft/data2
 20231105_aft/data3
 20231105_aft/data4
 20231105_aft/data5
 20231105_aft/data6)
 
-bag20231109=(20231109/data1
+bags20231109=(20231109/data1
 20231109/data2
 20231109/data3
 20231109/data4)
 
 # The following 3 trajs are covered by and cover the TLS map.
-ref_traj_file1="$ws_dir/src/FAST_LIO_SLAM/FAST_LIO/data/20231105_aft/data2/scan_states.txt" # the basketball court loop
-ref_traj_file2="$ws_dir/src/FAST_LIO_SLAM/FAST_LIO/data/20231109/data1/scan_states.txt" # the starlake loop
-ref_traj_file3="$ws_dir/src/FAST_LIO_SLAM/FAST_LIO/data/20231109/data2/scan_states.txt" # the software school loop
-ref_traj_file4="$ws_dir/src/FAST_LIO_SLAM/FAST_LIO/data/20231213/data1/scan_states.txt" # the xinghu bldg loop
+ref_traj_file1="$ws_dir/src/FAST_LIO/data/20231105_aft/data2/scan_states.txt" # the basketball court loop
+ref_traj_file2="$ws_dir/src/FAST_LIO/data/20231109/data1/scan_states.txt" # the starlake loop
+ref_traj_file3="$ws_dir/src/FAST_LIO/data/20231109/data2/scan_states.txt" # the software school loop
+ref_traj_file4="$ws_dir/src/FAST_LIO/data/20231213/data1/scan_states.txt" # the xinghu bldg loop
 
 lidarslam() {
 cd $ws_dir
