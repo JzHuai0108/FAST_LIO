@@ -30,6 +30,7 @@ mapping:
     gravity_m_s2: 9.79354 # wuhan earth surface local gravity
     init_pos_noise: 0.0
     init_rot_noise: 0.0
+    tls_dist_thresh: 8.0
 
 publish:
     scan_publish_en:  true       # 'false' will close all the point cloud output

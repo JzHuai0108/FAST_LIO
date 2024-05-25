@@ -873,8 +873,8 @@ bool load_initial_lidar_pose(const std::string &init_lidar_pose_file, V3D &world
     if (!init_lidar_pose_file.empty()) {
         std::ifstream in(init_lidar_pose_file);
         if (in.is_open()) {
-            double val[13];
-            for (int i = 0; i < 13; ++i) {
+            double val[12];
+            for (int i = 0; i < 12; ++i) {
                 in >> val[i];
             }
             in.close();
@@ -882,8 +882,7 @@ bool load_initial_lidar_pose(const std::string &init_lidar_pose_file, V3D &world
             world_R_lidar << val[0], val[1], val[2],
                              val[4], val[5], val[6],
                              val[8], val[9], val[10];
-            int TLS_project_id = int(val[12]);
-            std::cout << "TLS project for the start point: " << TLS_project_id << ", world_t_lidar:"
+            std::cout << "Start point in TLS: " << ", world_t_lidar:"
                       << world_t_lidar.transpose() << "\nworld_R_lidar\n" << world_R_lidar << std::endl;
             return true;
         } else {
