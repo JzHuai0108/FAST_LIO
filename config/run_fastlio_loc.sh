@@ -78,7 +78,7 @@ for bag in "${bagnames[@]}"; do
       bagfile:=$bagfile tls_ref_traj_files:="$ref_traj_file1;$ref_traj_file2;$ref_traj_file3;$ref_traj_file4" \
       tls_dir:=$tls_dir \
       init_lidar_pose_file:=$init_pose_file \
-      save_dir:=$save_dir
+      save_dir:=$save_dir 2>&1 | tee $save_dir/fastlio.log
 done
 }
 

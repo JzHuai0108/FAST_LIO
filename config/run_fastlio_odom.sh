@@ -56,13 +56,8 @@ for bag in "${bagnames[@]}"; do
   mkdir -p $save_dir
   roslaunch fast_lio mapping_hesai32_handheld.launch \
       configyaml:=hesai32_mti3dk_handheld.yaml \
-      bagfile:=$bagfile save_dir:=$save_dir
+      bagfile:=$bagfile save_dir:=$save_dir 2>&1 | tee $save_dir/fastlio.log
 done
 }
-
-# lidarslam "${bag20231105[@]}"
-# lidarslam "${bag20231105_aft[@]}"
-# lidarslam "${bag20231109[@]}"
-# lidarslam "${failed[@]}"
 
 lidarslam "${bags202312[@]}"
