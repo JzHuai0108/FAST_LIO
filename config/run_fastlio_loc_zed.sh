@@ -17,6 +17,10 @@ bagnames=("${@:2}")
 for i in "${!bagnames[@]}"; do 
   bag=${bagnames[$i]}
   timeoffset=${timeoffsets[$i]}
+  if [[ $whichend == "back" ]]; then
+    timeoffset=$(echo $timeoffset | awk '{print -$1}')
+  fi
+
   echo "Processing bag: "$bag"_aligned.bag"
   date=${bag%%/*} # the first part of $bag
   run=${bag#*/} # the second part of $bag
