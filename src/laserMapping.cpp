@@ -1376,9 +1376,9 @@ int main(int argc, char** argv) {
     int res = localizer.initializeSystem(nh);
     if (!res) return 0;
     bool abort = false;
-    ros::Rate rate(50);
+    ros::Rate rate(500);
     ros::Publisher lidar_publisher = nh.advertise<sensor_msgs::PointCloud2>(lid_topic, 100);
-    ros::Publisher imu_publisher = nh.advertise<sensor_msgs::Imu>(imu_topic, 100);
+    ros::Publisher imu_publisher = nh.advertise<sensor_msgs::Imu>(imu_topic, 5000);
     rosbag::Bag bag(bagfile, rosbag::bagmode::Read);
     if (bag.isOpen()) {
         ROS_INFO("Successfully opened bag %s", bagfile.c_str());
@@ -1396,12 +1396,11 @@ int main(int argc, char** argv) {
         if (m.getTopic() == lid_topic) {
             sensor_msgs::PointCloud2::ConstPtr lidar_msg = m.instantiate<sensor_msgs::PointCloud2>();
             lidar_publisher.publish(lidar_msg);
-        }
-        if (m.getTopic() == imu_topic) {
+            abort = localizer.spinOnce();
+        } else if (m.getTopic() == imu_topic) {
             sensor_msgs::Imu::ConstPtr imu_msg = m.instantiate<sensor_msgs::Imu>();
             imu_publisher.publish(imu_msg);
         }
-        abort = localizer.spinOnce();
         if (abort) break;
     }
     bag.close();
