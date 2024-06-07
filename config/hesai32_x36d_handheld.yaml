@@ -1,0 +1,46 @@
+common:
+    lid_topic:  "/hesai/pandar"  # for hiltislam2022 datasets
+    imu_topic:  "/x36d/imu_raw"
+    time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
+    time_offset_lidar_to_imu: 0.0  # lidar clock for lidar messages + time_offset_lidar_to_imu == imu clock for imu messages.
+
+preprocess:
+    lidar_type: 4                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 
+    scan_line: 32
+    timestamp_unit: 0                 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
+    blind: 2.0                          # the lidar is unable to measure distances less than blind.
+
+mapping:
+    acc_cov: 0.1                # \sigma^2*frequency
+    gyr_cov: 0.02
+    b_acc_cov: 0.001
+    b_gyr_cov: 0.001
+    fov_degree:    180
+    det_range:     120.0
+
+    icp_dist_thresh: 0.8
+    est_plane_thresh: 0.1
+
+    extrinsic_est_en: false
+    extrinsic_T: [0.06, 0.0, 0.16] # hesai xt32 in x36d imu.
+    extrinsic_R: [ 0.0, -1.0,  0.0,
+                   1.0, 0.0,  0.0,
+                   0.0, 0.0,  1.0]
+
+    gravity_m_s2: 9.79354 # wuhan earth surface local gravity
+    init_pos_noise: 0.0
+    init_rot_noise: 0.0
+    tls_dist_thresh: 8.0
+
+publish:
+    scan_publish_en:  true       # 'false' will close all the point cloud output
+    dense_publish_en: false       # false will low down the points number in a global-frame point clouds scan.
+    scan_bodyframe_pub_en: true  # output the point cloud scans in a body frame
+    publish_cloud_in_imu_frame: false # output the point cloud scans in IMU-frame or lidar-frame
+    output_ref_frame: lidar
+    show_submap: false
+
+pcd_save:
+    pcd_save_en: false
+    interval: -1                 # how many LiDAR frames saved in each pcd file; 
+                                 # -1 : all frames will be saved in ONE pcd file.
