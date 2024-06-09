@@ -1,10 +1,10 @@
 #!/bin/bash
 
-ws_dir="/media/$USER/docker/lidarslam/fastlio_slam_ws_rel"
-fastlio_dir="$ws_dir/src/FAST_LIO_SLAM/FAST_LIO"
+ws_dir="/home/jhuai/Documents/lidar/fastlioslam_ws"
+fastlio_dir="/home/jhuai/Documents/lidar/fastlioslam_ws/src/blss_lidar_slam/FAST_LIO"
 result_dir="/media/jhuai/MyBookDuo/jhuai/results/front_back_snapshots"
 tls_dir="/media/jhuai/T7/temp/whu_tls_1030"
-init_pose_dir="/media/jhuai/MyBookDuo/jhuai/results/front_back_snapshots"
+init_pose_dir=$result_dir
 
 configyaml="$fastlio_dir/config/hesai32_zed2i_handheld.yaml"
 
@@ -77,25 +77,27 @@ timeoffsets=(
 -0.065487	# 20230921/data5
 )
 
-lidarslam front "${bagnames[@]}"
+# lidarslam front "${bagnames[@]}"
 
 datadir="/media/jhuai/MyBookDuo/jhuai/data/homebrew/ebike"
-bagnames=("20231007/data1"
+bagnames=(
+  # "20231007/data1"
 "20231007/data2"
-"20231007/data3"
+# "20231007/data3"
 "20231007/data4"
-"20231007/data5"
+# "20231007/data5"
 "20231019/data1"
-"20231019/data2"
-"20231025/data1"
-"20231025/data2")
+# "20231019/data2"
+# "20231025/data1"
+# "20231025/data2"
+)
 
 timeoffsets=(
--0.078789 # 20231007/data1
+# -0.078789 # 20231007/data1
 -0.085042 # 20231007/data2
--0.063951	# 20231007/data3
+# -0.063951	# 20231007/data3
 -0.063899	# 20231007/data4
--0.083408	# 20231007/data5
+# -0.083408	# 20231007/data5
 -0.059665	# 20231019/data1
 -0.071511	# 20231019/data2
 -0.024084	# 20231025/data1
