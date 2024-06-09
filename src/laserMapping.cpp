@@ -50,6 +50,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/registration/gicp.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -116,12 +117,14 @@ deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
 
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
-PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI());
+PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI()); // downsampled point cloud in lidar frame.
 PointCloudXYZI::Ptr feats_down_world(new PointCloudXYZI());
 PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr _featsArray;
+pcl::PointCloud<pcl::PointXYZ>::Ptr tls_submap(new pcl::PointCloud<pcl::PointXYZ>()); // TLS submap
+pcl::PointCloud<pcl::PointXYZ>::Ptr feats_down_lidar(new pcl::PointCloud<pcl::PointXYZ>()); // downsampled point cloud in lidar frame.
 
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
 pcl::VoxelGrid<pcl::PointXYZ> downSizeFilterMap;
@@ -170,7 +173,7 @@ struct Pose3d {
     Pose3d(const SO3 &R_, const V3D &p_) : R(R_), p(p_) {}
 };
 
-inline void dump_lio_state_to_log(double lidar_end_time, const state_ikfom& state_point, FILE *fp, Pose3d &B_T_S) {
+inline void dump_lio_state_to_log(double lidar_end_time, const state_ikfom& state_point, FILE *fp, const Pose3d &B_T_S) {
     fprintf(fp, "%.9lf ", lidar_end_time);
     V3D w_t_s = state_point.rot * B_T_S.p + state_point.pos;
     Eigen::Quaterniond w_r_s = state_point.rot * B_T_S.R;
@@ -183,6 +186,25 @@ inline void dump_lio_state_to_log(double lidar_end_time, const state_ikfom& stat
     fprintf(fp, "%.6lf %.6lf %.6lf ", state_point.offset_T_L_I(0), state_point.offset_T_L_I(1), state_point.offset_T_L_I(2));
     fprintf(fp, "%.9lf %.9lf %.9lf %.9lf ", state_point.offset_R_L_I.coeffs()[0], state_point.offset_R_L_I.coeffs()[1], state_point.offset_R_L_I.coeffs()[2], state_point.offset_R_L_I.coeffs()[3]);
     fprintf(fp, "\n");
+}
+
+void dump_tls_traj_to_log(double lidar_end_time, const Eigen::Matrix4d &tls_T_lidar, const state_ikfom &state_point, 
+        std::ofstream &stream) {
+    stream << std::fixed << std::setprecision(9) << lidar_end_time << " ";
+    V3D tls_p_lidar = tls_T_lidar.block<3, 1>(0, 3);
+    Eigen::Quaterniond tls_q_lidar(tls_T_lidar.block<3, 3>(0, 0));
+    Eigen::Quaterniond tls_q_world = tls_q_lidar * state_point.offset_R_L_I.inverse() * state_point.rot.inverse();
+    V3D tls_v_body = tls_q_world * state_point.vel;
+    V3D tls_gravity = tls_q_world * state_point.grav;
+    stream << std::fixed << std::setprecision(6) << tls_p_lidar(0) << " " << tls_p_lidar(1) << " " << tls_p_lidar(2) << " ";
+    stream << std::fixed << std::setprecision(9) << tls_q_world.coeffs()[0] << " " << tls_q_world.coeffs()[1] << " " << tls_q_world.coeffs()[2] << " " << tls_q_world.coeffs()[3] << " ";
+    stream << std::fixed << std::setprecision(6) << tls_v_body(0) << " " << tls_v_body(1) << " " << tls_v_body(2) << " ";
+    stream << std::fixed << std::setprecision(6) << state_point.bg(0) << " " << state_point.bg(1) << " " << state_point.bg(2) << " ";
+    stream << std::fixed << std::setprecision(6) << state_point.ba(0) << " " << state_point.ba(1) << " " << state_point.ba(2) << " ";
+    stream << std::fixed << std::setprecision(6) << tls_gravity(0) << " " << tls_gravity(1) << " " << tls_gravity(2) << " ";
+    stream << std::fixed << std::setprecision(6) << state_point.offset_T_L_I(0) << " " << state_point.offset_T_L_I(1) << " " << state_point.offset_T_L_I(2) << " ";
+    stream << std::fixed << std::setprecision(9) << state_point.offset_R_L_I.coeffs()[0] << " " << state_point.offset_R_L_I.coeffs()[1] << " " << state_point.offset_R_L_I.coeffs()[2] << " " << state_point.offset_R_L_I.coeffs()[3] << " ";
+    stream << "\n";
 }
 
 void pointBodyToWorld(PointType const * const pi, PointType * const po)
@@ -499,7 +521,7 @@ int load_close_tls_scans(const TlsPositionVector &TLS_positions, int prev_neares
     }
 
     std::string map_filename;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr TCL_submap(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::PointCloud<pcl::PointXYZ>::Ptr tls_scans(new pcl::PointCloud<pcl::PointXYZ>());
 
     size_t count = 0;
     int target_project_id = int(TLS_positions[nearest_index][3]);
@@ -521,7 +543,7 @@ int load_close_tls_scans(const TlsPositionVector &TLS_positions, int prev_neares
         loadedscans.push_back(scanid);
         pcl::PointCloud<pcl::PointXYZ>::Ptr map(new pcl::PointCloud<pcl::PointXYZ>());
         pcl::io::loadPCDFile<pcl::PointXYZ>(map_filename, *map);
-        *TCL_submap += *map;
+        *tls_scans += *map;
         count++;
     }
     std::cout << "Loaded " << loadedscans.size() << " new scans: ";
@@ -529,28 +551,19 @@ int load_close_tls_scans(const TlsPositionVector &TLS_positions, int prev_neares
         std::cout << j << ":" << loadedscans[j] << " ";
     }
 
-    downSizeFilterMap.setInputCloud(TCL_submap);
-    pcl::PointCloud<pcl::PointXYZ>::Ptr map_ds(new pcl::PointCloud<pcl::PointXYZ>());
-    downSizeFilterMap.filter(*map_ds);
-    PointVector PointToAdd;
-    PointToAdd.reserve(map_ds->points.size());
-    for (int i = 0; i < map_ds->points.size(); i++) {
-        pcl::PointXYZINormal point;
-        point.x = map_ds->points[i].x;
-        point.y = map_ds->points[i].y;
-        point.z = map_ds->points[i].z;
-        PointToAdd.push_back(point);
-    }
-    ikdtree.Build(PointToAdd);
+    downSizeFilterMap.setInputCloud(tls_scans);
+    tls_submap->clear();
+    downSizeFilterMap.filter(*tls_submap);
+
     if (prev_nearest_scan_idx >= 0) {
         ROS_INFO(("New nearest id %d, project id %d, old nearest id %d, project id %d, "
              "loaded %zu frames, %zu points downsampled from %zu."), 
             nearest_index, (int)TLS_positions[nearest_index][3], prev_nearest_scan_idx, 
-            (int)TLS_positions[prev_nearest_scan_idx][3], count, PointToAdd.size(), TCL_submap->points.size());
+            (int)TLS_positions[prev_nearest_scan_idx][3], count, tls_submap->points.size(), tls_scans->points.size());
     } else {
         ROS_INFO(("New nearest id %d, project id %d, "
              "loaded %zu frames, %zu points downsampled from %zu."), 
-            nearest_index, (int)TLS_positions[nearest_index][3], count, PointToAdd.size(), TCL_submap->points.size());
+            nearest_index, (int)TLS_positions[nearest_index][3], count, tls_submap->points.size(), tls_scans->points.size());
     }
     return nearest_index;
 }
@@ -965,6 +978,10 @@ private:
     DistCheckup dist_checkup;
     int nearest_scan_idx = -1; // scan idx within the tls_position_ids.
 
+    Eigen::Matrix4d tls_T_lidar_; // lidar pose in the TLS world frame.
+    state_ikfom prev_state_point_;
+    std::ofstream tls_traj_stream_;
+
 public:
 int initializeSystem(ros::NodeHandle &nh) {
     nh.param<bool>("publish/path_en",path_en, true);
@@ -1085,6 +1102,9 @@ int initializeSystem(ros::NodeHandle &nh) {
         return 0;
     }
 
+    string tls_traj_filename = state_log_dir + "/tls_traj.txt";
+    tls_traj_stream_.open(tls_traj_filename);
+
     fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"),ios::out);
     fout_out.open(DEBUG_FILE_DIR("mat_out.txt"),ios::out);
     if (fout_pre && fout_out)
@@ -1122,6 +1142,11 @@ int initializeSystem(ros::NodeHandle &nh) {
         add_pose_noise(init_w_t_lidar, init_w_R_lidar, init_pos_noise, init_rot_noise);
         init_world_R_imu = init_w_R_lidar * Lidar_R_wrt_IMU.transpose();
         init_world_t_imu_vec = init_w_t_lidar - init_world_R_imu * Lidar_T_wrt_IMU;
+
+        tls_T_lidar_.setIdentity();
+        tls_T_lidar_.topLeftCorner<3, 3>() = init_w_R_lidar;
+        tls_T_lidar_.topRightCorner<3, 1>() = init_w_t_lidar;
+
         std::cout << "TLS dir: " << tls_dir << std::endl;
         std::string tls_project_dir = tls_dir + "/project1/regis";
         load_tls_project_poses(tls_project_dir, tls_position_ids);
@@ -1144,6 +1169,31 @@ int initializeSystem(ros::NodeHandle &nh) {
     return 1;
 }
 
+    void pointXyziToPointXyz(PointCloudXYZI::ConstPtr in, pcl::PointCloud<pcl::PointXYZ>::Ptr out) {
+        out->resize(in->size());
+        for (int i = 0; i < in->size(); i++) {
+            out->points[i].x = in->points[i].x;
+            out->points[i].y = in->points[i].y;
+            out->points[i].z = in->points[i].z;
+        }
+    }
+
+    void locToTlsByGicp(pcl::PointCloud<pcl::PointXYZ>::ConstPtr lidar_frame,
+            pcl::PointCloud<pcl::PointXYZ>::ConstPtr tls_submap,
+            Eigen::Matrix4f &tls_T_lidar) {
+        pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> reg;
+        reg.setInputSource(lidar_frame);
+        reg.setInputTarget(tls_submap);
+        // use default parameters or set them yourself, for example:
+        // reg.setMaximumIterations(...);
+        // reg.setTransformationEpsilon(...);
+        // reg.setRotationEpsilon(...);
+        // reg.setCorrespondenceRandomness(...);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr output(new pcl::PointCloud<pcl::PointXYZ>);
+        reg.align(*output, tls_T_lidar);
+        tls_T_lidar = reg.getFinalTransformation();
+    }
+
     bool spinOnce() {
         // return true if to exit, false otherwise.
         if (flg_exit) return true;
@@ -1162,6 +1212,8 @@ int initializeSystem(ros::NodeHandle &nh) {
                 p_imu->first_lidar_time = first_lidar_time;
                 if (locmode) {
                     p_imu->set_init_pose(init_world_t_imu_vec, init_world_R_imu);
+                    prev_state_point_.pos = init_world_t_imu_vec;
+                    prev_state_point_.rot = init_world_R_imu;
                 }
                 flg_first_scan = false;
                 return false;
@@ -1203,8 +1255,6 @@ int initializeSystem(ros::NodeHandle &nh) {
             /*** initialize the map kdtree ***/
             if(ikdtree.Root_Node == nullptr)
             {
-                if (locmode)
-                    ROS_WARN("ikdtree should have been initialized ealier in locmode!");
                 if(feats_down_size > 5)
                 {
                     ikdtree.set_downsample_param(filter_size_map_min);
@@ -1273,17 +1323,35 @@ int initializeSystem(ros::NodeHandle &nh) {
             
             t3 = omp_get_wtime();
             if (locmode) {
+                Eigen::Vector3d w_p_prevb = prev_state_point_.pos;
+                Eigen::Vector3d w_p_curb = state_point.pos;
+                SO3 w_q_prevb = prev_state_point_.rot;
+                SO3 w_q_curb = state_point.rot;
+                SO3 prevb_q_curb = w_q_prevb.inverse() * w_q_curb;
+                Eigen::Vector3d prevb_p_curb = w_q_prevb.inverse() * (w_p_curb - w_p_prevb);
+                Eigen::Matrix4d Lprev_T_Lcur = Eigen::Matrix4d::Identity();
+                SO3 prevl_q_curl = state_point.offset_R_L_I.inverse() * prevb_q_curb * state_point.offset_R_L_I;
+                Lprev_T_Lcur.block<3, 3>(0, 0) = prevl_q_curl.matrix();
+                Lprev_T_Lcur.block<3, 1>(0, 3) = state_point.offset_R_L_I.inverse() * (prevl_q_curl * state_point.offset_T_L_I + 
+                        prevb_p_curb - state_point.offset_T_L_I);
+
+                Eigen::Matrix4f tls_T_lidar = (tls_T_lidar_ * Lprev_T_Lcur).cast<float>();
+                pointXyziToPointXyz(feats_down_body, feats_down_lidar);
+                locToTlsByGicp(feats_down_lidar, tls_submap, tls_T_lidar);
+
+                tls_T_lidar_ = tls_T_lidar.cast<double>();
+                prev_state_point_ = state_point;
+
                 Eigen::Vector4d timed_position;
                 timed_position[0] = lidar_end_time;
-                timed_position.segment(1, 3) = pos_lid;
+                timed_position.segment(1, 3) = V3D(tls_T_lidar(0, 3), tls_T_lidar(1, 3), tls_T_lidar(2, 3));
                 bool inbound = dist_checkup.check(timed_position);
                 if (!inbound) {
                     ROS_WARN("The lidar pose is out of the TLS trajectory, abort the odometer.");
                     return true;
                 }
-            } else {
-                map_incremental();
             }
+            map_incremental();
             t5 = omp_get_wtime();
 
             /******* Publish points *******/
@@ -1327,6 +1395,7 @@ int initializeSystem(ros::NodeHandle &nh) {
                 B_T_S = Pose3d(state_point.offset_R_L_I, state_point.offset_T_L_I);
             } // else pass
             dump_lio_state_to_log(lidar_end_time, state_point, fp, B_T_S);
+            dump_tls_traj_to_log(lidar_end_time, tls_T_lidar_, state_point, tls_traj_stream_);
         }
         return false;
     }
@@ -1348,6 +1417,8 @@ void saveMap() {
     fout_pre.close();
     if (fp)
       fclose(fp);
+    if (tls_traj_stream_.is_open())
+        tls_traj_stream_.close();
     if (runtime_pos_log)
     {
         vector<double> t, s_vec, s_vec2, s_vec3, s_vec4, s_vec5, s_vec6, s_vec7;    
