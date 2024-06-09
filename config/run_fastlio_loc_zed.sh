@@ -43,6 +43,7 @@ for i in "${!bagnames[@]}"; do
 
   configyamlname=$(basename $configyaml)
   sed -i "/time_offset_lidar_to_imu/c\    time_offset_lidar_to_imu: $timeoffset" $configyaml
+  sed -i "/tls_dist_thresh/c\    tls_dist_thresh: 100" $configyaml
   roslaunch fast_lio loc_hesai32_handheld.launch \
       configyaml:=$configyamlname \
       bagfile:=$bagfile tls_ref_traj_files:="$ref_traj_file1;$ref_traj_file2;$ref_traj_file3;$ref_traj_file4" \
@@ -51,6 +52,7 @@ for i in "${!bagnames[@]}"; do
       save_dir:=$save_dir 2>&1 | tee $save_dir/fastlio.log
 done
 sed -i "/time_offset_lidar_to_imu/c\    time_offset_lidar_to_imu: 0.0" $configyaml; # reset
+sed -i "/tls_dist_thresh/c\    tls_dist_thresh: 8.0" $configyaml
 }
 
 # The following 3 trajs are covered by and cover the TLS map.

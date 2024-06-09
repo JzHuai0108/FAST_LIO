@@ -500,7 +500,7 @@ void map_incremental()
     kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
-int load_close_tls_scans(const TlsPositionVector &TLS_positions, int prev_nearest_scan_idx) {
+int load_close_tls_scans(const TlsPositionVector &TLS_positions, int prev_nearest_scan_idx, int maxscans) {
     // find the nearest position in the TLS map
     int nearest_index = -1;
     double min_distance = std::numeric_limits<double>::max();
@@ -527,7 +527,9 @@ int load_close_tls_scans(const TlsPositionVector &TLS_positions, int prev_neares
     int target_project_id = int(TLS_positions[nearest_index][3]);
     std::vector<int> loadedscans;
     loadedscans.reserve(3);
-    for (int i = nearest_index - 1; i <= nearest_index + 1; i++){
+
+    int halfscans = maxscans / 2;
+    for (int i = nearest_index - halfscans; i <= nearest_index + halfscans; i++) {
         if (i < 0 || i >= TLS_positions.size()){
             continue;
         }
@@ -895,7 +897,7 @@ bool load_initial_lidar_pose(const std::string &init_lidar_pose_file, V3D &world
             world_R_lidar << val[0], val[1], val[2],
                              val[4], val[5], val[6],
                              val[8], val[9], val[10];
-            std::cout << "Start point in TLS: " << ", world_t_lidar:"
+            std::cout << "Start point in TLS: " << "world_t_lidar:"
                       << world_t_lidar.transpose() << "\nworld_R_lidar\n" << world_R_lidar << std::endl;
             return true;
         } else {
@@ -977,6 +979,7 @@ private:
     double tls_dist_thresh = 8; // the max distance to the tls trajectory to abort the odometer.
     DistCheckup dist_checkup;
     int nearest_scan_idx = -1; // scan idx within the tls_position_ids.
+    int num_gicp_iter = 10;
 
     Eigen::Matrix4d tls_T_lidar_; // lidar pose in the TLS world frame.
     state_ikfom prev_state_point_;
@@ -1025,6 +1028,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<std::string>("init_lidar_pose_file", init_lidar_pose_file, "");
     nh.param<std::string>("tls_ref_traj_files", tls_ref_traj_files, "");
     nh.param<double>("mapping/tls_dist_thresh", tls_dist_thresh, 8);
+    nh.param<int>("mapping/num_gicp_iter", num_gicp_iter, 10);
     nh.param<double>("mapping/init_pos_noise", init_pos_noise, 0.0);
     nh.param<double>("mapping/init_rot_noise", init_rot_noise, 0.0);
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
@@ -1165,6 +1169,7 @@ int initializeSystem(ros::NodeHandle &nh) {
         } else {
             ROS_WARN("No TLS reference trajectory files provided, TLS checkup disabled.");
         }
+        ROS_INFO("num_gicp_iter: %d", num_gicp_iter);
     }
     return 1;
 }
@@ -1185,7 +1190,7 @@ int initializeSystem(ros::NodeHandle &nh) {
         reg.setInputSource(lidar_frame);
         reg.setInputTarget(tls_submap);
         // use default parameters or set them yourself, for example:
-        // reg.setMaximumIterations(...);
+        reg.setMaximumIterations(num_gicp_iter);
         // reg.setTransformationEpsilon(...);
         // reg.setRotationEpsilon(...);
         // reg.setCorrespondenceRandomness(...);
@@ -1250,7 +1255,7 @@ int initializeSystem(ros::NodeHandle &nh) {
             feats_down_size = feats_down_body->points.size();
             if (locmode) {
                 ikdtree.set_downsample_param(filter_size_map_min);
-                nearest_scan_idx = load_close_tls_scans(tls_position_ids, nearest_scan_idx);
+                nearest_scan_idx = load_close_tls_scans(tls_position_ids, nearest_scan_idx, 3);
             }
             /*** initialize the map kdtree ***/
             if(ikdtree.Root_Node == nullptr)
@@ -1337,8 +1342,11 @@ int initializeSystem(ros::NodeHandle &nh) {
 
                 Eigen::Matrix4f tls_T_lidar = (tls_T_lidar_ * Lprev_T_Lcur).cast<float>();
                 pointXyziToPointXyz(feats_down_body, feats_down_lidar);
+                auto starttime = std::chrono::high_resolution_clock::now();
                 locToTlsByGicp(feats_down_lidar, tls_submap, tls_T_lidar);
-
+                auto endtime = std::chrono::high_resolution_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endtime - starttime);
+                // ROS_INFO("GICP time: %.3f ms", duration.count() / 1000.0);
                 tls_T_lidar_ = tls_T_lidar.cast<double>();
                 prev_state_point_ = state_point;
 
