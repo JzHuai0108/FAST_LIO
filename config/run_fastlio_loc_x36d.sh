@@ -1,9 +1,9 @@
 #!/bin/bash
 
-ws_dir="/home/pi/Documents/lidar/fastlioslam_ws"
-fastlio_dir="$ws_dir/src/FAST_LIO"
-result_dir="/media/pi/BackupPlus/jhuai/results/front_back_snapshots"
-tls_dir="/media/pi/BackupPlus/jhuai/data/homebrew/whu_tls_1030"
+ws_dir="/home/jhuai/Documents/lidar/fastlioslam_ws"
+fastlio_dir="$ws_dir/src/blss_lidar_slam/FAST_LIO"
+result_dir="/media/jhuai/MyBookDuo/jhuai/results/front_back_snapshots"
+tls_dir="/media/jhuai/T7/temp/whu_tls_1030"
 init_pose_dir=$result_dir
 
 configyaml="$fastlio_dir/config/hesai32_x36d_handheld.yaml"
@@ -55,54 +55,18 @@ ref_traj_file2="$fastlio_dir/data/20231109/data1/scan_states.txt" # the starlake
 ref_traj_file3="$fastlio_dir/data/20231109/data2/scan_states.txt" # the software school loop
 ref_traj_file4="$fastlio_dir/data/20231213/data1/scan_states.txt" # the xinghu bldg loop
 
-# datadir="/media/jhuai/MyBookDuo/jhuai/data/homebrew/handheld"
-# bagnames=(
-# "20230920/data1"
-# "20230920/data2"
-# "20230921/data2"
-# "20230921/data3"
-# "20230921/data4"
-# "20230921/data5")
-
-# timeoffsets=(
-# -0.063126	# 20230920/data1
-# -0.188544	# 20230920/data2
-# -0.060487	# 20230921/data2
-# -0.054847	# 20230921/data3
-# -0.060223	# 20230921/data4
-# -0.065487	# 20230921/data5
-# )
-
+datadir="/media/jhuai/MyBookDuo/jhuai/data/homebrew/handheld"
+bagnames=("20230921/data2")
+timeoffsets=(0.0)
 # lidarslam front "${bagnames[@]}"
 
-# datadir="/media/jhuai/MyBookDuo/jhuai/data/homebrew/ebike"
-# bagnames=("20231007/data1"
-# "20231007/data2"
-# "20231007/data3"
-# "20231007/data4"
-# "20231007/data5"
-# "20231019/data1"
-# "20231019/data2"
-# "20231025/data1"
-# "20231025/data2")
-
-# timeoffsets=(
-# -0.078789 # 20231007/data1
-# -0.085042 # 20231007/data2
-# -0.063951	# 20231007/data3
-# -0.063899	# 20231007/data4
-# -0.083408	# 20231007/data5
-# -0.059665	# 20231019/data1
-# -0.071511	# 20231019/data2
-# -0.024084	# 20231025/data1
-# 0.0	# 20231025/data2
-# )
-
-# lidarslam front "${bagnames[@]}"
-
-datadir="/media/pi/BackupPlus/jhuai/data/homebrew/ebike"
+datadir="/media/jhuai/MyBookDuo/jhuai/data/homebrew/ebike"
 bagnames=(
-  "20231105/data6"
-  "20231105_aft/data4")
-timeoffsets=(0 0)
+"20231007/data2"
+"20231007/data4"
+"20231019/data1"
+)
+
+timeoffsets=(1.049 1.047 1.0507)
+
 lidarslam front "${bagnames[@]}"
