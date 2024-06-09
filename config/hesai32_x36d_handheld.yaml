@@ -2,7 +2,7 @@ common:
     lid_topic:  "/hesai/pandar"  # for hiltislam2022 datasets
     imu_topic:  "/x36d/imu_raw"
     time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
-    time_offset_lidar_to_imu: 0.0  # lidar clock for lidar messages + time_offset_lidar_to_imu == imu clock for imu messages.
+    time_offset_lidar_to_imu: 0.0
 
 preprocess:
     lidar_type: 4                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 
@@ -18,10 +18,10 @@ mapping:
     fov_degree:    180
     det_range:     120.0
 
-    icp_dist_thresh: 0.8
+    icp_dist_thresh: 0.9
     est_plane_thresh: 0.1
 
-    extrinsic_est_en: false
+    extrinsic_est_en: true
     extrinsic_T: [0.06, 0.0, 0.16] # hesai xt32 in x36d imu.
     extrinsic_R: [ 0.0, -1.0,  0.0,
                    1.0, 0.0,  0.0,

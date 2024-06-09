@@ -48,6 +48,7 @@
 #include <nav_msgs/Path.h>
 #include <visualization_msgs/Marker.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <pcl/registration/gicp.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
@@ -117,6 +118,9 @@ deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI());
+PointCloudXYZI::Ptr prev_feats_down_lidar(new PointCloudXYZI()); // last downsampled lidar points
+Eigen::Matrix4f Lprev_T_Lcur = Eigen::Matrix4f::Identity(); // ICP result
+state_ikfom prev_state_point; // state point before IMU propagation.
 PointCloudXYZI::Ptr feats_down_world(new PointCloudXYZI());
 PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1));
@@ -502,10 +506,14 @@ int load_close_tls_scans(const TlsPositionVector &TLS_positions, int prev_neares
     pcl::PointCloud<pcl::PointXYZ>::Ptr TCL_submap(new pcl::PointCloud<pcl::PointXYZ>());
 
     size_t count = 0;
+    int loadnum = 3;
+    int startid = nearest_index - loadnum / 2;
+    int endid = nearest_index + loadnum / 2;
+    int trueloadnum = (loadnum / 2) * 2 + 1;
     int target_project_id = int(TLS_positions[nearest_index][3]);
     std::vector<int> loadedscans;
-    loadedscans.reserve(3);
-    for (int i = nearest_index - 1; i <= nearest_index + 1; i++){
+    loadedscans.reserve(trueloadnum);
+    for (int i = startid; i <= endid; i++){
         if (i < 0 || i >= TLS_positions.size()){
             continue;
         }
@@ -1144,6 +1152,20 @@ int initializeSystem(ros::NodeHandle &nh) {
     return 1;
 }
 
+    bool largeMotionCheck(const state_ikfom &prev_state_point, const state_ikfom &cur_state_point, 
+        const SO3 &Bprev_q_Bcur, const V3D &Bprev_t_Bcur) {
+        V3D dp = prev_state_point.rot.conjugate() * (cur_state_point.pos - prev_state_point.pos);
+        V3D ddp = dp - Bprev_t_Bcur;
+        std::cout << "dp: " << dp.transpose() << ", icp: " << Bprev_t_Bcur.transpose() << ", ddp: " << ddp.transpose() << std::endl;
+        double posdiffnorm = ddp.norm();
+        double velnorm = cur_state_point.vel.norm();
+        if (posdiffnorm > 0.4 || velnorm > 8) {
+            ROS_WARN("Large motion detected, posdiffnorm: %.2f, velnorm: %.2f", posdiffnorm, velnorm);
+            return true;
+        }
+        return false;
+    }
+
     bool spinOnce() {
         // return true if to exit, false otherwise.
         if (flg_exit) return true;
@@ -1175,7 +1197,7 @@ int initializeSystem(ros::NodeHandle &nh) {
             solve_const_H_time = 0;
             svd_time   = 0;
             t0 = omp_get_wtime();
-
+            prev_state_point = state_point;
             p_imu->Process(Measures, kf, feats_undistort);
             state_point = kf.get_x();
             pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
@@ -1193,7 +1215,24 @@ int initializeSystem(ros::NodeHandle &nh) {
 
             /*** downsample the feature points in a scan ***/
             downSizeFilterSurf.setInputCloud(feats_undistort);
+            pcl::copyPointCloud(*feats_down_body, *prev_feats_down_lidar);
             downSizeFilterSurf.filter(*feats_down_body);
+            std::cout << "Prev feature size " << prev_feats_down_lidar->size() << ", current feature size " << feats_down_body->size() << std::endl;
+            if (!prev_feats_down_lidar->empty()) {
+                pcl::GeneralizedIterativeClosestPoint<PointType, PointType> reg;
+                reg.setInputSource(feats_down_body);
+                reg.setInputTarget(prev_feats_down_lidar);
+                // use default parameters or set them yourself, for example:
+                // reg.setMaximumIterations(...);
+                // reg.setTransformationEpsilon(...);
+                // reg.setRotationEpsilon(...);
+                // reg.setCorrespondenceRandomness(...);
+                pcl::PointCloud<PointType>::Ptr output(new pcl::PointCloud<PointType>);
+                // supply a better guess, if possible:
+                Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
+                reg.align(*output, guess);
+                Lprev_T_Lcur = reg.getFinalTransformation();
+            }
             t1 = omp_get_wtime();
             feats_down_size = feats_down_body->points.size();
             if (locmode) {
@@ -1255,8 +1294,20 @@ int initializeSystem(ros::NodeHandle &nh) {
             /*** iterated state estimation ***/
             double t_update_start = omp_get_wtime();
             double solve_H_time = 0;
+            state_ikfom state_clone = state_point;
             kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
             state_point = kf.get_x();
+            Eigen::Quaterniond Lprev_q_Lcur(Lprev_T_Lcur.block<3, 3>(0, 0).cast<double>());
+            Eigen::Vector3d Lprev_t_Lcur = Lprev_T_Lcur.block<3, 1>(0, 3).cast<double>();
+            Eigen::Quaterniond Bprev_q_Bcur(state_point.offset_R_L_I * Lprev_q_Lcur * state_point.offset_R_L_I.conjugate());
+            Eigen::Vector3d Bprev_t_Bcur = state_point.offset_T_L_I + state_point.offset_R_L_I * Lprev_t_Lcur - Bprev_q_Bcur * state_point.offset_T_L_I;
+            if (largeMotionCheck(prev_state_point, state_point, Bprev_q_Bcur, Bprev_t_Bcur)) {
+                state_point = state_clone;
+                // jhuai: ICP and TLS loc mismatch in multisteps can cause huge velocities.
+                // state_point.rot = prev_state_point.rot * Bprev_q_Bcur;
+                // state_point.pos = prev_state_point.pos + prev_state_point.rot * Bprev_t_Bcur;
+                kf.change_x(state_point);
+            }
             euler_cur = SO3ToEuler(state_point.rot);
             pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
             geoQuat.x = state_point.rot.coeffs()[0];
