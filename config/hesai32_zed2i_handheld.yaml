@@ -32,6 +32,8 @@ mapping:
     init_rot_noise: 0.0
     tls_dist_thresh: 8.0
     num_gicp_iter: 5
+    tls_lio_dp_tol: 0.4
+    tls_lio_dq_tol_deg: 5
 
 publish:
     scan_publish_en:  true       # 'false' will close all the point cloud output

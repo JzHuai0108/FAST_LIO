@@ -35,7 +35,7 @@ for i in "${!bagnames[@]}"; do
   fi
 
   init_pose_file=$init_pose_dir/$date/$run/$whichend/tls_T_xt32.txt
-  save_dir=$init_pose_dir/$date/$run/$whichend
+  save_dir=$result_dir/$date/$run/$whichend
   echo "bagfile: $bagfile, time offset to be set: $timeoffset"
   echo "init_lidar_pose_file: $init_pose_file"
   echo "save_dir: $save_dir"

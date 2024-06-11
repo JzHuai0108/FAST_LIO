@@ -207,6 +207,51 @@ void dump_tls_traj_to_log(double lidar_end_time, const Eigen::Matrix4d &tls_T_li
     stream << "\n";
 }
 
+
+template <typename PointSource, typename PointTarget>
+class GeneralizedIterativeClosestPointExposed : public pcl::GeneralizedIterativeClosestPoint<PointSource, PointTarget> {
+public:
+    size_t nr_;
+
+    typedef pcl::GeneralizedIterativeClosestPoint<PointSource, PointTarget> BaseClass;
+    typedef typename pcl::GeneralizedIterativeClosestPoint<PointSource, PointTarget>::PointCloudSource PointCloudSource;
+    using BaseClass::input_;
+    using BaseClass::final_transformation_;
+    using BaseClass::tree_;
+    double getFitnessScore(double max_range=std::numeric_limits< double >::max())
+    {
+        nr_ = 0;
+        double fitness_score = 0.0;
+        
+        // Transform the input dataset using the final transformation
+        PointCloudSource input_transformed;
+        transformPointCloud(*input_, input_transformed, final_transformation_);
+        
+        pcl::Indices nn_indices(1);
+        std::vector<float> nn_dists(1);
+        
+        // For each point in the source dataset
+        int nr = 0;
+        for (const auto& point : input_transformed) {
+            if (!input_->is_dense && !pcl::isXYZFinite(point))
+            continue;
+            // Find its nearest neighbor in the target
+            tree_->nearestKSearch(point, 1, nn_indices, nn_dists);
+        
+            // Deal with occlusions (incomplete targets)
+            if (nn_dists[0] <= max_range) {
+            // Add to the fitness score
+            fitness_score += nn_dists[0];
+            nr++;
+            }
+        }
+        nr_ = nr;
+        if (nr > 0)
+            return (fitness_score / nr);
+        return 1e9; // (std::numeric_limits<double>::max());
+    }
+};
+
 void pointBodyToWorld(PointType const * const pi, PointType * const po)
 {
     V3D p_lidar(pi->x, pi->y, pi->z);
@@ -980,9 +1025,11 @@ private:
     DistCheckup dist_checkup;
     int nearest_scan_idx = -1; // scan idx within the tls_position_ids.
     int num_gicp_iter = 10;
-
+    double tls_lio_dp_tol = 0.4;
+    double tls_lio_dq_tol_deg = 6;
     Eigen::Matrix4d tls_T_lidar_; // lidar pose in the TLS world frame.
-    state_ikfom prev_state_point_;
+    Eigen::Matrix4d ref_tls_T_lidar_; // the last valid tls_T_lidar got by GICP.
+    state_ikfom ref_state_point_; // the valid state point at the instant of ref_tls_T_lidar_.
     std::ofstream tls_traj_stream_;
 
 public:
@@ -1028,6 +1075,8 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<std::string>("init_lidar_pose_file", init_lidar_pose_file, "");
     nh.param<std::string>("tls_ref_traj_files", tls_ref_traj_files, "");
     nh.param<double>("mapping/tls_dist_thresh", tls_dist_thresh, 8);
+    nh.param<double>("mapping/tls_lio_dp_tol", tls_lio_dp_tol, 0.4);
+    nh.param<double>("mapping/tls_lio_dq_tol_deg", tls_lio_dq_tol_deg, 6);
     nh.param<int>("mapping/num_gicp_iter", num_gicp_iter, 10);
     nh.param<double>("mapping/init_pos_noise", init_pos_noise, 0.0);
     nh.param<double>("mapping/init_rot_noise", init_rot_noise, 0.0);
@@ -1150,6 +1199,7 @@ int initializeSystem(ros::NodeHandle &nh) {
         tls_T_lidar_.setIdentity();
         tls_T_lidar_.topLeftCorner<3, 3>() = init_w_R_lidar;
         tls_T_lidar_.topRightCorner<3, 1>() = init_w_t_lidar;
+        ref_tls_T_lidar_ = tls_T_lidar_;
 
         std::cout << "TLS dir: " << tls_dir << std::endl;
         std::string tls_project_dir = tls_dir + "/project1/regis";
@@ -1185,8 +1235,9 @@ int initializeSystem(ros::NodeHandle &nh) {
 
     void locToTlsByGicp(pcl::PointCloud<pcl::PointXYZ>::ConstPtr lidar_frame,
             pcl::PointCloud<pcl::PointXYZ>::ConstPtr tls_submap,
-            Eigen::Matrix4f &tls_T_lidar) {
-        pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> reg;
+            Eigen::Matrix4f &tls_T_lidar, double &meansquaredist, 
+            size_t &nummatches, bool &converged) {
+        GeneralizedIterativeClosestPointExposed<pcl::PointXYZ, pcl::PointXYZ> reg;
         reg.setInputSource(lidar_frame);
         reg.setInputTarget(tls_submap);
         // use default parameters or set them yourself, for example:
@@ -1196,6 +1247,9 @@ int initializeSystem(ros::NodeHandle &nh) {
         // reg.setCorrespondenceRandomness(...);
         pcl::PointCloud<pcl::PointXYZ>::Ptr output(new pcl::PointCloud<pcl::PointXYZ>);
         reg.align(*output, tls_T_lidar);
+        meansquaredist = reg.getFitnessScore(0.15);
+        nummatches = reg.nr_;
+        converged = reg.hasConverged();
         tls_T_lidar = reg.getFinalTransformation();
     }
 
@@ -1217,8 +1271,8 @@ int initializeSystem(ros::NodeHandle &nh) {
                 p_imu->first_lidar_time = first_lidar_time;
                 if (locmode) {
                     p_imu->set_init_pose(init_world_t_imu_vec, init_world_R_imu);
-                    prev_state_point_.pos = init_world_t_imu_vec;
-                    prev_state_point_.rot = init_world_R_imu;
+                    ref_state_point_.pos = init_world_t_imu_vec;
+                    ref_state_point_.rot = init_world_R_imu;
                 }
                 flg_first_scan = false;
                 return false;
@@ -1328,31 +1382,65 @@ int initializeSystem(ros::NodeHandle &nh) {
             
             t3 = omp_get_wtime();
             if (locmode) {
-                Eigen::Vector3d w_p_prevb = prev_state_point_.pos;
+                // get relative motion from fastlio.
+                Eigen::Vector3d w_p_refb = ref_state_point_.pos;
                 Eigen::Vector3d w_p_curb = state_point.pos;
-                SO3 w_q_prevb = prev_state_point_.rot;
+                SO3 w_q_refb = ref_state_point_.rot;
                 SO3 w_q_curb = state_point.rot;
-                SO3 prevb_q_curb = w_q_prevb.inverse() * w_q_curb;
-                Eigen::Vector3d prevb_p_curb = w_q_prevb.inverse() * (w_p_curb - w_p_prevb);
-                Eigen::Matrix4d Lprev_T_Lcur = Eigen::Matrix4d::Identity();
-                SO3 prevl_q_curl = state_point.offset_R_L_I.inverse() * prevb_q_curb * state_point.offset_R_L_I;
-                Lprev_T_Lcur.block<3, 3>(0, 0) = prevl_q_curl.matrix();
-                Lprev_T_Lcur.block<3, 1>(0, 3) = state_point.offset_R_L_I.inverse() * (prevl_q_curl * state_point.offset_T_L_I + 
-                        prevb_p_curb - state_point.offset_T_L_I);
+                SO3 refb_q_curb = w_q_refb.inverse() * w_q_curb;
+                Eigen::Vector3d refb_p_curb = w_q_refb.inverse() * (w_p_curb - w_p_refb);
+                Eigen::Matrix4d refl_T_curl = Eigen::Matrix4d::Identity();
+                SO3 refl_q_curl = state_point.offset_R_L_I.inverse() * refb_q_curb * state_point.offset_R_L_I;
+                refl_T_curl.block<3, 3>(0, 0) = refl_q_curl.matrix();
+                Eigen::Vector3d refl_p_curl = state_point.offset_R_L_I.inverse() * (refl_q_curl * state_point.offset_T_L_I + 
+                        refb_p_curb - state_point.offset_T_L_I);
+                refl_T_curl.block<3, 1>(0, 3) = refl_p_curl;
 
-                Eigen::Matrix4f tls_T_lidar = (tls_T_lidar_ * Lprev_T_Lcur).cast<float>();
+                // predict the lidar pose in the TLS world frame with the relative motion.
+                Eigen::Matrix4d pred_tls_T_lidar = ref_tls_T_lidar_ * refl_T_curl;
+                Eigen::Matrix4f tls_T_lidar = pred_tls_T_lidar.cast<float>();
                 pointXyziToPointXyz(feats_down_body, feats_down_lidar);
                 auto starttime = std::chrono::high_resolution_clock::now();
-                locToTlsByGicp(feats_down_lidar, tls_submap, tls_T_lidar);
+                double meansquaredist;
+                size_t nummatches;
+                bool converged;
+                locToTlsByGicp(feats_down_lidar, tls_submap, tls_T_lidar, meansquaredist, nummatches, converged);
+                ROS_INFO("GICP converged: %d, nummatches: %lu, meansquaredist: %.3f", converged, nummatches, meansquaredist);
                 auto endtime = std::chrono::high_resolution_clock::now();
                 auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endtime - starttime);
                 // ROS_INFO("GICP time: %.3f ms", duration.count() / 1000.0);
-                tls_T_lidar_ = tls_T_lidar.cast<double>();
-                prev_state_point_ = state_point;
+                // compute the relative motion in the lidar frame
+                Eigen::Matrix4d refl_T_curl_tls = ref_tls_T_lidar_.inverse() * tls_T_lidar.cast<double>();
+                Eigen::Quaterniond refl_q_curl_tls(refl_T_curl_tls.block<3, 3>(0, 0));
+                Eigen::Vector3d refl_p_curl_tls = refl_T_curl_tls.block<3, 1>(0, 3);
+                Eigen::AngleAxisd dq(refl_q_curl_tls.inverse() * refl_q_curl);
+                Eigen::Vector3d dp = refl_p_curl - refl_p_curl_tls;
+                double dq_angle = std::fabs(dq.angle()) * 180 / M_PI;
+                if (dp.norm() > tls_lio_dp_tol) {
+                    ROS_WARN_STREAM("Diff rel motion, dp: " << dp.transpose()
+                        << ", dq angle: " << dq_angle << " deg, converged "
+                        << converged << ", nummatches: " << nummatches
+                        << ", meansquaredist: " << meansquaredist
+                        << ", refl_p_curl: " << refl_p_curl.transpose()
+                        << ", refl_p_curl_tls: " << refl_p_curl_tls.transpose()
+                        << ", refl_q_curl: " << refl_q_curl.coeffs().transpose()
+                        << ", refl_q_curl_tls: " << refl_q_curl_tls.coeffs().transpose());
+                    if (nummatches > 700 && converged) {
+                        tls_T_lidar_ = tls_T_lidar.cast<double>();
+                        ref_tls_T_lidar_ = tls_T_lidar_;
+                        ref_state_point_ = state_point;
+                    } else {
+                        tls_T_lidar_ = pred_tls_T_lidar;
+                    }
+                } else {
+                    tls_T_lidar_ = tls_T_lidar.cast<double>();
+                    ref_tls_T_lidar_ = tls_T_lidar_;
+                    ref_state_point_ = state_point;
+                }
 
                 Eigen::Vector4d timed_position;
                 timed_position[0] = lidar_end_time;
-                timed_position.segment(1, 3) = V3D(tls_T_lidar(0, 3), tls_T_lidar(1, 3), tls_T_lidar(2, 3));
+                timed_position.segment(1, 3) = V3D(tls_T_lidar_(0, 3), tls_T_lidar_(1, 3), tls_T_lidar_(2, 3));
                 bool inbound = dist_checkup.check(timed_position);
                 if (!inbound) {
                     ROS_WARN("The lidar pose is out of the TLS trajectory, abort the odometer.");
