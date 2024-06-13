@@ -44,6 +44,7 @@ publish:
     show_submap: false
 
 pcd_save:
+    save_undistorted_scan: true
     pcd_save_en: false
     interval: -1                 # how many LiDAR frames saved in each pcd file; 
                                  # -1 : all frames will be saved in ONE pcd file.
