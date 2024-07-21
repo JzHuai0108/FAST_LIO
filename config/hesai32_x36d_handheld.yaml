@@ -22,10 +22,10 @@ mapping:
     est_plane_thresh: 0.1
 
     extrinsic_est_en: false
-    extrinsic_T: [0.06, 0.0, 0.16] # hesai xt32 in x36d imu.
-    extrinsic_R: [ 0.0, -1.0,  0.0,
-                   1.0, 0.0,  0.0,
-                   0.0, 0.0,  1.0]
+    extrinsic_T: [0.0612623179649581, -0.000167179467473962, 0.159520846518155] # hesai xt32 in x36d imu.
+    extrinsic_R: [-0.00140210590424504, -0.999967799375897, 0.0079015625150266,
+                  0.999997758200801, -0.00141459609599892, -0.00157534520771185,
+                  0.00158647179041364, 0.00789933549241611, 0.999967541548126]
 
     gravity_m_s2: 9.79354 # wuhan earth surface local gravity
     init_pos_noise: 0.0
