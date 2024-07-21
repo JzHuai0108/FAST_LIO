@@ -1,10 +1,11 @@
 #!/bin/bash
 
-ws_dir="/media/jhuai/docker/lidarslam/catkin_fastlio_slam"
-fastlio_dir="$ws_dir/src/FAST_LIO_SLAM/FAST_LIO"
+ws_dir="/media/$USER/docker/lidarslam/catkin_fastlio_slam"
+ws_dir="$HOME/Documents/lidar/fastlioslam_ws"
+fastlio_dir="$ws_dir/src/FAST_LIO"
 configyaml="$fastlio_dir/config/hesai32_zed2i_handheld.yaml"
 
-result_dir="/media/jhuai/MyBookDuo/jhuai/results/fastlio"
+result_dir="/media/$USER/MyBookDuo/jhuai/results/fastlio"
 
 lidarslam() {
 cd $ws_dir

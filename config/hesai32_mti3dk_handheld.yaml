@@ -18,7 +18,7 @@ mapping:
     fov_degree:    180
     det_range:     120.0
 
-    icp_dist_thresh: 0.8 # The larger, the less points will be selected for ICP matching.
+    icp_dist_thresh: 0.9 # The larger, the less points will be selected for ICP matching.
     est_plane_thresh: 0.1 # The larger, the more surfels will be accepted as planes.
 
     extrinsic_est_en: false
