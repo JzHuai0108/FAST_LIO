@@ -154,3 +154,10 @@ loc_check_bags=(
 timeoffsets=(0 0 0)
 lidarslam back "${loc_check_bags[@]}"
 lidarslam front "${loc_check_bags[@]}"
+
+
+datadir="/media/pi/My_Book/jhuai/data/zip"
+bags202401=(
+  20240113/data1)
+timeoffsets=(0)
+lidarslam front "${bags202401[@]}"
