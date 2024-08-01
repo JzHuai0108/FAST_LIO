@@ -134,6 +134,12 @@ vector<double> init_world_t_imu(3, 0.0);
 vector<double> init_world_rpy_imu(3, 0.0);
 V3D init_world_t_imu_vec(Zero3d);
 M3D init_world_R_imu(Eye3d);
+V3D init_world_v_imu_vec(Zero3d);
+std::string bag_start_time;
+// start time in unix time to process the lidar data. 
+// If empty or 0, the first lidar message will be used.
+// This time corresponds to the init_world_t_imu_vec and init_world_R_imu.
+ros::Time bag_start_time_ros;
 
 V3F XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);
 V3F XAxisPoint_world(LIDAR_SP_LEN, 0.0, 0.0);
@@ -869,7 +875,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 }
 
 bool load_initial_lidar_pose(const std::string &init_lidar_pose_file, V3D &world_t_lidar,
-                             M3D &world_R_lidar) {
+                             M3D &world_R_lidar, V3D &world_v_lidar) {
     if (!init_lidar_pose_file.empty()) {
         std::ifstream in(init_lidar_pose_file);
         if (in.is_open()) {
@@ -877,13 +883,24 @@ bool load_initial_lidar_pose(const std::string &init_lidar_pose_file, V3D &world
             for (int i = 0; i < 12; ++i) {
                 in >> val[i];
             }
+            double vel[3] = {0};
+            try {
+                for (int i = 0; i < 3; ++i) {
+                    in >> vel[i];
+                }
+            } catch (...) {
+                std::cerr << "Warn: No velocity information in " << init_lidar_pose_file << std::endl;
+            }
             in.close();
             world_t_lidar = V3D(val[3], val[7], val[11]);
             world_R_lidar << val[0], val[1], val[2],
                              val[4], val[5], val[6],
                              val[8], val[9], val[10];
+            world_v_lidar = V3D(vel[0], vel[1], vel[2]);
             std::cout << "Start point in TLS: " << ", world_t_lidar:"
-                      << world_t_lidar.transpose() << "\nworld_R_lidar\n" << world_R_lidar << std::endl;
+                      << world_t_lidar.transpose() << "\nworld_R_lidar\n"
+                      << world_R_lidar << "\nworld_v_lidar:"
+                      << world_v_lidar.transpose() << std::endl;
             return true;
         } else {
             std::cerr << "Cannot open file: " << init_lidar_pose_file << std::endl;
@@ -936,6 +953,23 @@ size_t load_tls_project_poses(const std::string &tls_project_dir, TlsPositionVec
     return TLS_positions.size();
 }
 
+ros::Time parseTimeStr(const std::string &time_str) {
+    if (time_str.empty()) {
+        return ros::Time(1000); // to handle an epsilon time.
+    }
+    if (time_str == "0") {
+        return ros::Time(10000);
+    }
+    size_t pos = time_str.find('.');
+    int secs = std::stoi(time_str.substr(0, pos));
+    size_t nseclen = time_str.size() - pos - 1;
+    if (nseclen < 9) {
+        return ros::Time(secs, std::stoi(time_str.substr(pos + 1)) * std::pow(10, 9 - nseclen));
+    } else {
+        return ros::Time(secs, std::stoi(time_str.substr(pos + 1, 9)));
+    }
+}
+
 class LocToTlsCluster {
 private:
     ros::Time lastMsgTime;
@@ -964,6 +998,7 @@ private:
     double tls_dist_thresh = 8; // the max distance to the tls trajectory to abort the odometer.
     DistCheckup dist_checkup;
     int nearest_scan_idx = -1; // scan idx within the tls_position_ids.
+    std::string state_filename = "scan_states.txt";
 
 public:
 int initializeSystem(ros::NodeHandle &nh) {
@@ -1006,6 +1041,7 @@ int initializeSystem(ros::NodeHandle &nh) {
 
     nh.param<std::string>("tls_dir", tls_dir, "");
     nh.param<std::string>("init_lidar_pose_file", init_lidar_pose_file, "");
+    nh.param<std::string>("bag_start_time", bag_start_time, "0");
     nh.param<std::string>("tls_ref_traj_files", tls_ref_traj_files, "");
     nh.param<double>("mapping/tls_dist_thresh", tls_dist_thresh, 8);
     nh.param<double>("mapping/init_pos_noise", init_pos_noise, 0.0);
@@ -1014,24 +1050,19 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
     nh.param<double>("mapping/gravity_m_s2", p_imu->G_m_s2, 9.81);
     nh.param<string>("save_dir", state_log_dir, "");
+    nh.param<string>("state_filename", state_filename, "scan_states.txt");
     nh.param<vector<double>>("mapping/init_world_t_imu", init_world_t_imu, vector<double>());
     nh.param<vector<double>>("mapping/init_world_rpy_imu", init_world_rpy_imu, vector<double>());
     nh.param<double>("mapping/icp_dist_thresh", icp_dist_thresh, 0.9);
     nh.param<double>("mapping/est_plane_thresh", est_plane_thresh, 0.1);
-
     init_world_t_imu_vec = V3D(init_world_t_imu[0], init_world_t_imu[1], init_world_t_imu[2]);
     init_world_R_imu = EulerToRotM(init_world_rpy_imu);
-    cout << "locmode? " << locmode << ", filter_size_map " << filter_size_map_min << std::endl;
-    cout << "init_world_t_imu: " << init_world_t_imu[0] << " " << init_world_t_imu[1] << " " << init_world_t_imu[2] << endl;
-    cout << "init_world_rpy_imu: " << init_world_rpy_imu[0] << " " << init_world_rpy_imu[1] << " " << init_world_rpy_imu[2] << endl;
-    cout << "init_world_R_imu: " << endl << init_world_R_imu << endl;
-    cout << "p_pre->lidar_type "<<p_pre->lidar_type<<endl;
-    cout << "show submap " << show_submap << endl;
+    bag_start_time_ros = parseTimeStr(bag_start_time);
     if (state_log_dir.empty()) {
       cerr << "You have to provide save_dir to make the saving functions work properly." << std::endl;
       return 0;
     }
-    cout << "state log dir: " << state_log_dir << endl;
+    cout << "state log dir: " << state_log_dir << ", state filename: " << state_filename << endl;
     path.header.stamp    = ros::Time::now();
     path.header.frame_id ="camera_init";
 
@@ -1078,7 +1109,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS, epsi);
 
     /*** debug record ***/
-    string pos_log_filename = state_log_dir + "/scan_states.txt";
+    string pos_log_filename = state_log_dir + "/" + state_filename;
     fp = fopen(pos_log_filename.c_str(),"w");
     if (fp == NULL) {
         std::cout << "Failed to create state file " << pos_log_filename << "." << std::endl;
@@ -1118,10 +1149,12 @@ int initializeSystem(ros::NodeHandle &nh) {
         std::cout << "init_lidar_pose_file: " << init_lidar_pose_file << std::endl;
         V3D init_w_t_lidar;
         M3D init_w_R_lidar;
-        load_initial_lidar_pose(init_lidar_pose_file, init_w_t_lidar, init_w_R_lidar);
+        V3D init_w_v_lidar;
+        load_initial_lidar_pose(init_lidar_pose_file, init_w_t_lidar, init_w_R_lidar, init_w_v_lidar);
         add_pose_noise(init_w_t_lidar, init_w_R_lidar, init_pos_noise, init_rot_noise);
         init_world_R_imu = init_w_R_lidar * Lidar_R_wrt_IMU.transpose();
         init_world_t_imu_vec = init_w_t_lidar - init_world_R_imu * Lidar_T_wrt_IMU;
+        init_world_v_imu_vec = init_w_v_lidar;
         std::cout << "TLS dir: " << tls_dir << std::endl;
         std::string tls_project_dir = tls_dir + "/project1/regis";
         load_tls_project_poses(tls_project_dir, tls_position_ids);
@@ -1141,6 +1174,15 @@ int initializeSystem(ros::NodeHandle &nh) {
             ROS_WARN("No TLS reference trajectory files provided, TLS checkup disabled.");
         }
     }
+    cout << "locmode? " << locmode << ", filter_size_map " << filter_size_map_min << std::endl;
+    cout << "init_world_t_imu_vec: " << init_world_t_imu_vec[0] << " " << init_world_t_imu_vec[1] << " " << init_world_t_imu_vec[2] << endl;
+    cout << "init_world_R_imu: " << endl << init_world_R_imu << endl;
+    cout << "init_world_v_imu_vec: " << init_world_v_imu_vec[0] << " " << init_world_v_imu_vec[1] << " " << init_world_v_imu_vec[2] << endl;
+    cout << "bag_start_time: " << bag_start_time << ", bag_start_time_ros: " 
+         << bag_start_time_ros.sec << "." << std::setw(9) << std::setfill('0') 
+         << bag_start_time_ros.nsec << std::endl;
+    cout << "p_pre->lidar_type "<<p_pre->lidar_type<<endl;
+    cout << "show submap " << show_submap << endl;
     return 1;
 }
 
@@ -1161,7 +1203,7 @@ int initializeSystem(ros::NodeHandle &nh) {
                 first_lidar_time = Measures.lidar_beg_time;
                 p_imu->first_lidar_time = first_lidar_time;
                 if (locmode) {
-                    p_imu->set_init_pose(init_world_t_imu_vec, init_world_R_imu);
+                    p_imu->set_init_pose(init_world_t_imu_vec, init_world_R_imu, init_world_v_imu_vec);
                 }
                 flg_first_scan = false;
                 return false;
@@ -1392,13 +1434,21 @@ int main(int argc, char** argv) {
     topics.push_back(imu_topic);
 
     rosbag::View view(bag, rosbag::TopicQuery(topics));
+    ros::Duration epsi(0.05);
+    ros::Time min_time_ros = bag_start_time_ros - epsi;
     foreach(rosbag::MessageInstance const m, view) {
         if (m.getTopic() == lid_topic) {
             sensor_msgs::PointCloud2::ConstPtr lidar_msg = m.instantiate<sensor_msgs::PointCloud2>();
+            if (lidar_msg->header.stamp < min_time_ros) {
+                continue;
+            }
             lidar_publisher.publish(lidar_msg);
             abort = localizer.spinOnce();
         } else if (m.getTopic() == imu_topic) {
             sensor_msgs::Imu::ConstPtr imu_msg = m.instantiate<sensor_msgs::Imu>();
+            if (imu_msg->header.stamp < min_time_ros) {
+                continue;
+            }
             imu_publisher.publish(imu_msg);
         }
         if (abort) break;
