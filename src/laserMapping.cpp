@@ -596,12 +596,12 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
                         new PointCloudXYZI(size, 1));
         if (pcd_save_interval == 1) {
             for (int i = 0; i < size; i++) {
-                // save the pointcloud in the local IMU frame.
+                // save the pointcloud in the local lidar frame.
                 Matrix<double, 3, 1> temp;
                 temp(0) = feats_undistort->points[i].x;
                 temp(1) = feats_undistort->points[i].y;
                 temp(2) = feats_undistort->points[i].z;
-                temp = state_point.offset_R_L_I*temp + state_point.offset_T_L_I;
+                // temp = state_point.offset_R_L_I*temp + state_point.offset_T_L_I;
                 laserCloudWorld->points[i].x = temp(0);
                 laserCloudWorld->points[i].y = temp(1);
                 laserCloudWorld->points[i].z = temp(2);
@@ -621,10 +621,14 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
         if (pcl_wait_save->size() > 0 && pcd_save_interval > 0  && scan_wait_num >= pcd_save_interval)
         {
             pcd_index ++;
-            string all_points_dir(string(state_log_dir + "/PCD/scans_") + to_string(pcd_index) + string(".pcd"));
+
+            std::stringstream ss;
+            std::string all_points_dir = state_log_dir + "/PCD/";
+            ss << std::fixed << std::setprecision(9) << lidar_end_time << ".pcd";
+            std::string fn = all_points_dir + ss.str();
+
             pcl::PCDWriter pcd_writer;
-            cout << "current scan saved to " << all_points_dir << endl;
-            pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
+            pcd_writer.writeBinary(fn, *pcl_wait_save);
             pcl_wait_save->clear();
             scan_wait_num = 0;
         }
