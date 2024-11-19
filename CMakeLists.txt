@@ -90,3 +90,6 @@ target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
 
 add_executable(check_traj_in_tls src/check_traj_in_tls.cpp src/dist_checkup.cpp)
 target_link_libraries(check_traj_in_tls ${PCL_LIBRARIES})
+
+add_executable(rectify_hovermap_pcl src/rectify_hovermap_pcl.cpp)
+target_link_libraries(rectify_hovermap_pcl ${catkin_LIBRARIES} ${PCL_LIBRARIES})
