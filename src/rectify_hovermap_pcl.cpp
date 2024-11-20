@@ -3,6 +3,8 @@
  * by transforming these points to the stationary encoder frame.
  */
 
+#include "hovermap.h"
+
 #include <ros/ros.h>
 #include <rosbag/bag.h>
 #include <rosbag/view.h>
@@ -11,48 +13,11 @@
 #include <sensor_msgs/TimeReference.h>
 #include <tf2_msgs/TFMessage.h>
 
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl_conversions/pcl_conversions.h>
-
-#include <Eigen/Dense>
-#include <Eigen/StdVector>
-
 #include <boost/foreach.hpp>
 
 #include <algorithm>  // For std::lower_bound
 #include <iostream>
 #include <string>
-#include <vector>
-
-
-namespace hovermap_velodyne {
-    struct EIGEN_ALIGN16 Point {
-        PCL_ADD_POINT4D;  // This macro adds the x, y, z, and padding to align to 16-byte boundaries.
-        double timestamp;  // Offset: 16, datatype: double (8 bytes)
-        float intensity;   // Offset: 24, datatype: float (4 bytes)
-        uint8_t ring;     // Offset: 28, datatype: uint8_t (1 byte)
-        uint8_t returnNum; // Offset: 29, datatype: uint8_t (1 byte)
-
-        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    };
-}  // namespace hovermap_velodyne
-
-POINT_CLOUD_REGISTER_POINT_STRUCT(hovermap_velodyne::Point,
-    (float, x, x)
-    (float, y, y)
-    (float, z, z)
-    (double, timestamp, timestamp)
-    (float, intensity, intensity)
-    (std::uint8_t, ring, ring)
-    (std::uint8_t, returnNum, returnNum)
-)
-
-typedef std::vector<Eigen::Matrix<double, 7, 1>, Eigen::aligned_allocator<Eigen::Matrix<double, 7, 1>>> PoseVector;
-// px py pz qx qy qz qw
-
-typedef std::vector<Eigen::Matrix<double, 10, 1>, Eigen::aligned_allocator<Eigen::Matrix<double, 10, 1>>> ImuDataVector;
-// gx gy gz ax ay az qx qy qz qw, first 3 for angular rate, second 3 for linear acceleration, last 4 for orientation
 
 
 void read_pps_times(const std::string& bagname, std::vector<ros::Time> *host_times,
@@ -414,6 +379,21 @@ Eigen::Affine3d interpolate_pose(const std::vector<ros::Time>& times,
     return interpolated_pose;
 }
 
+void get_lidar_extrinsics() {
+    Eigen::Affine3d E_T_I = Eigen::Translation3d(-0.03587546555175705, 0.005730217182290136, 0.032125318431006494) *
+                            Eigen::Quaterniond(0.005488590158788708, 0.5002131474472541, -0.0020782735504224405, 0.8658824188526003);
+    std::cout << "E_T_I:\n";
+    std::cout << E_T_I.matrix() << std::endl;
+    Eigen::Matrix4d I_T_E = E_T_I.inverse().matrix();
+    std::cout << "I_R_E:\n";
+    std::cout << std::fixed << std::setprecision(9);
+    std::cout << I_T_E(0, 0) << "," << I_T_E(0, 1) << "," << I_T_E(0, 2) << "," << std::endl;
+    std::cout << I_T_E(1, 0) << "," << I_T_E(1, 1) << "," << I_T_E(1, 2) << "," << std::endl;
+    std::cout << I_T_E(2, 0) << "," << I_T_E(2, 1) << "," << I_T_E(2, 2) << std::endl;
+    std::cout << "I_p_E:\n";
+    std::cout << I_T_E(0, 3) << "," << I_T_E(1, 3) << "," << I_T_E(2, 3) << std::endl;
+}
+
 void rotate_lidar_points(const std::string& fn,
                          const std::vector<ros::Time>& assoc_enc_sensor_times,
                          const PoseVector& assoc_encoder_poses,
@@ -436,7 +416,7 @@ void rotate_lidar_points(const std::string& fn,
     Eigen::Affine3d Er_T_L = Eigen::Translation3d(0.007907239801392001, 0.0004581341025153923, -0.1116369382182321) *
                              Eigen::Quaterniond(0.703768612596697, 0.009711627769598887, 0.7102844361843709, 0.01055670043315378);
     Eigen::Affine3d E_T_I = Eigen::Translation3d(-0.03587546555175705, 0.005730217182290136, 0.032125318431006494) *
-                            Eigen::Quaterniond(0.5002131474472541, -0.0020782735504224405, 0.8658824188526003, 0.005488590158788708);
+                            Eigen::Quaterniond(0.005488590158788708, 0.5002131474472541, -0.0020782735504224405, 0.8658824188526003);
 
     rosbag::Bag bag;
     rosbag::Bag outbag;
@@ -607,7 +587,201 @@ void merge_rosbags(const std::vector<std::string>& input_bags, const std::string
 }
 
 
+ros::Time parseGpsTime(const std::string& gps_time_str) {
+    size_t dot_pos = gps_time_str.find('.');
+    if (dot_pos == std::string::npos) {
+        throw std::invalid_argument("Invalid GPS time format: no decimal point found.");
+    }
+
+    // Split the string into the seconds and fractional parts
+    std::string sec_str = gps_time_str.substr(0, dot_pos);
+    std::string nsec_str = gps_time_str.substr(dot_pos + 1);
+
+    // Convert the seconds part to an integer
+    int sec = std::stoi(sec_str);
+
+    // Ensure the nanoseconds part is exactly 9 digits by padding with zeros if necessary
+    if (nsec_str.length() < 9) {
+        nsec_str.append(9 - nsec_str.length(), '0');
+    } else if (nsec_str.length() > 9) {
+        nsec_str = nsec_str.substr(0, 9);  // Truncate to 9 digits if longer
+    }
+
+    // Convert the nanoseconds part to an integer
+    int nsec = std::stoi(nsec_str);
+
+    // Create and return the ros::Time instance
+    return ros::Time(sec, nsec);
+}
+
+void read_poses(const std::string& posefile, std::vector<ros::Time>& posetimes, PoseVector& W_T_E_list) {
+    // each line, time gpstime x y z pitch roll yaw rot.w rot.x rot.y rot.z
+    // we save extract gpstime, xyz and rot.xyzw
+    std::ifstream infile(posefile);
+    if (!infile.is_open()) {
+        std::cerr << "Error: Could not open file " << posefile << std::endl;
+        return;
+    }
+
+    posetimes.reserve(1000);
+    W_T_E_list.reserve(1000);
+    std::string line;
+    while (std::getline(infile, line)) {
+        std::istringstream ss(line);
+        std::string unused_time_str, gps_time_str;
+        double x, y, z, roll, pitch, yaw, rot_x, rot_y, rot_z, rot_w;
+
+        // Read the line and parse the values
+        if (!(ss >> unused_time_str >> gps_time_str >> x >> y >> z >> roll >> pitch >> yaw >> rot_w >> rot_x >> rot_y >> rot_z)) {
+            std::cerr << "Error: Malformed line in pose file: " << line << std::endl;
+            continue;  // Skip to the next line
+        }
+
+        // Parse gps_time string to ros::Time using parseGpsTime
+        try {
+            ros::Time pose_time = parseGpsTime(gps_time_str);
+            posetimes.push_back(pose_time);
+        } catch (const std::exception& e) {
+            std::cerr << "Error: Failed to parse gps_time for line: " << line << " (" << e.what() << ")" << std::endl;
+            continue;  // Skip to the next line
+        }
+
+        // Create a 7D vector for the pose (x, y, z, rot_x, rot_y, rot_z, rot_w)
+        Eigen::Matrix<double, 7, 1> pose;
+        pose << x, y, z, rot_x, rot_y, rot_z, rot_w;
+        W_T_E_list.push_back(pose);
+    }
+
+    infile.close();
+    std::cout << "Finished reading poses from " << posefile << std::endl;
+    std::cout << "First time " << posetimes[0] << ", pose";
+    for (int i = 0; i < 7; ++i) {
+        std::cout << " " << W_T_E_list[0][i];
+    }
+    std::cout << std::endl;
+}
+
+void transform_poses(const PoseVector& W_T_I_list, const Eigen::Affine3d& I_T_E, PoseVector& W_T_E_list) {
+    W_T_E_list.clear();  // Ensure the output vector is empty before populating
+    W_T_E_list.reserve(W_T_I_list.size());
+
+    for (const auto& W_T_I : W_T_I_list) {
+        // Extract the translation (x, y, z) from the 7D vector
+        Eigen::Vector3d translation_I(W_T_I[0], W_T_I[1], W_T_I[2]);
+
+        // Extract the quaternion (rot_x, rot_y, rot_z, rot_w) from the 7D vector
+        Eigen::Quaterniond rotation_I(W_T_I[6], W_T_I[3], W_T_I[4], W_T_I[5]);  // Note: Eigen uses (w, x, y, z)
+
+        // Construct the Affine3d transform for W_T_I
+        Eigen::Affine3d W_T_I_transform = Eigen::Translation3d(translation_I) * rotation_I;
+
+        // Apply the I_T_E transformation: W_T_E = W_T_I * I_T_E
+        Eigen::Affine3d W_T_E_transform = W_T_I_transform * I_T_E;
+
+        // Extract the transformed translation and rotation
+        Eigen::Vector3d translation_E = W_T_E_transform.translation();
+        Eigen::Quaterniond rotation_E(W_T_E_transform.rotation());
+
+        // Construct a 7D vector for W_T_E (x, y, z, rot_x, rot_y, rot_z, rot_w)
+        Eigen::Matrix<double, 7, 1> W_T_E;
+        W_T_E << translation_E.x(), translation_E.y(), translation_E.z(),
+                 rotation_E.x(), rotation_E.y(), rotation_E.z(), rotation_E.w();
+
+        // Append to the output vector
+        W_T_E_list.push_back(W_T_E);
+    }
+
+    std::cout << "Finished transforming poses from W_T_I to W_T_E." << std::endl;
+}
+
+typedef pcl::PointCloud<hovermap_velodyne::Point> PointCloudHovermap;
+typedef pcl::PointCloud<pcl::PointXYZI> PointCloudXYZI;
+void aggregate_scans(std::string bagname, std::string posefile, std::string outpcd, 
+        std::string topic = "/velodyne_points", double start_time=0, double end_time=10) {
+    // bagname: point cloud bag file rectified by rotating the lidar points to the static encoder frame
+    // posefile: the hovermap .xyz traj output text file
+    // outpcd: aggregated point cloud file
+    // topic: /velodyne_points
+    // start_time: relative to the begin of the rosbag
+    // end_time: relative to the begin of the rosbag
+    std::vector<ros::Time> posetimes;
+    PoseVector W_T_B_list;
+    read_poses(posefile, posetimes, W_T_B_list);
+
+    Eigen::Affine3d E_T_I = Eigen::Translation3d(-0.03587546555175705, 0.005730217182290136, 0.032125318431006494) *
+                            Eigen::Quaterniond(0.005488590158788708, 0.5002131474472541, -0.0020782735504224405, 0.8658824188526003);
+    Eigen::Affine3d I_T_E = E_T_I.inverse();
+    PoseVector W_T_E_list;
+    if (0) {
+        transform_poses(W_T_B_list, I_T_E, W_T_E_list);
+    } else if (0) {
+        W_T_E_list = W_T_B_list;
+    } else {
+        std::cout << "Ignore poses in aggregation" << std::endl;
+        W_T_E_list = W_T_B_list;
+        for (size_t i = 0; i < W_T_E_list.size(); ++i) {
+            W_T_E_list[i].setIdentity();
+        }
+    }
+
+    const ros::Duration host_time_from_sensor_time(1724899451, 232580000);
+
+    rosbag::Bag bag;
+    bag.open(bagname, rosbag::bagmode::Read);
+    rosbag::View view(bag, rosbag::TopicQuery(topic));
+    ros::Time bag_start_time = view.getBeginTime();
+    ros::Duration start(start_time);
+    ros::Duration finish(end_time);
+    std::cout << "Aggregating points from " << start << " to  " << finish << " of " << bagname << std::endl;
+    PointCloudXYZI aggregated_cloud;
+    int numframes = 0;
+    BOOST_FOREACH(rosbag::MessageInstance const m, view) {
+        sensor_msgs::PointCloud2::ConstPtr cloud_msg = m.instantiate<sensor_msgs::PointCloud2>();
+        if (cloud_msg != nullptr && (cloud_msg->header.stamp > bag_start_time + start && 
+                cloud_msg->header.stamp <= bag_start_time + finish)) {
+            PointCloudHovermap scan_cloud;
+            pcl::fromROSMsg(*cloud_msg, scan_cloud);
+
+            PointCloudXYZI transformed_scan_cloud;
+            for (const auto& point : scan_cloud) {
+                double sensor_time_sec = point.timestamp;  // Using the timestamp field from hovermap_velodyne::Point
+                ros::Time sensor_time(sensor_time_sec);
+                ros::Time gps_time = sensor_time + host_time_from_sensor_time;
+
+                Eigen::Affine3d W_T_E = interpolate_pose(posetimes, W_T_E_list, gps_time);
+
+                Eigen::Vector3d p_E(point.x, point.y, point.z);
+                Eigen::Vector3d p_W = W_T_E * p_E;
+
+                pcl::PointXYZI transformed_point;
+                transformed_point.x = p_W.x();
+                transformed_point.y = p_W.y();
+                transformed_point.z = p_W.z();
+                transformed_point.intensity = point.intensity;  // Copy intensity from the original point
+
+                transformed_scan_cloud.push_back(transformed_point);
+            }
+            ++numframes;
+            aggregated_cloud += transformed_scan_cloud;  // Append the current scan to the aggregated point cloud
+        }
+    }
+
+    bag.close();
+
+    // Save the aggregated point cloud to a PCD file
+    pcl::io::savePCDFileASCII(outpcd, aggregated_cloud);
+    std::cout << "Saved aggregated point cloud from " << numframes << " frames to " << outpcd << std::endl;
+}
+
 int main(const int argc, char **argv) {
+    if (0) {
+        std::string bagname = "Log/aligned.bag";
+        std::string posefile = "Output/0829445e8e93_01_Output_traj.xyz";
+        std::string outpcd = "Log/merged.pcd";
+        aggregate_scans(bagname, posefile, outpcd, "/velodyne_points", 0.1);
+        return 0;
+    }
+
     if (argc == 1) {
         std::cout << "Usage: " << argv[0] << " path/to/hovermap/data.bag [path/to/output/dir(Log)] [tol_ms(6.0)]" << std::endl;
         return 0;

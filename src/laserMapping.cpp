@@ -959,10 +959,10 @@ size_t load_tls_project_poses(const std::string &tls_project_dir, TlsPositionVec
 
 ros::Time parseTimeStr(const std::string &time_str) {
     if (time_str.empty()) {
-        return ros::Time(1000); // to handle an epsilon time.
+        return ros::Time(0);
     }
     if (time_str == "0") {
-        return ros::Time(10000);
+        return ros::Time(0);
     }
     size_t pos = time_str.find('.');
     int secs = std::stoi(time_str.substr(0, pos));
@@ -1439,7 +1439,11 @@ int main(int argc, char** argv) {
 
     rosbag::View view(bag, rosbag::TopicQuery(topics));
     ros::Duration epsi(0.05);
-    ros::Time min_time_ros = bag_start_time_ros - epsi;
+    ros::Time min_time_ros;
+    if (bag_start_time_ros.toSec() < epsi.toSec())
+        min_time_ros = bag_start_time_ros;
+    else
+        min_time_ros = bag_start_time_ros - epsi;
     foreach(rosbag::MessageInstance const m, view) {
         if (m.getTopic() == lid_topic) {
             sensor_msgs::PointCloud2::ConstPtr lidar_msg = m.instantiate<sensor_msgs::PointCloud2>();
