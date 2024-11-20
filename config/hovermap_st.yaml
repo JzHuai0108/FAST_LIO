@@ -22,10 +22,10 @@ mapping:
     est_plane_thresh: 0.1
 
     extrinsic_est_en: false
-    extrinsic_T: [-0.045792165,0.005253461,0.015079763] # lidar in imu.
-    extrinsic_R: [-0.499513365,0.007425788,0.866274354,
-                  -0.011584107,-0.999931112,0.001891849,
-                   0.866228727,-0.009090011,0.499564976]
+    extrinsic_T: [0.0, 0.0, 0.0] # lidar in imu.
+    extrinsic_R: [1.0, 0.0, 0.0,
+                  0.0, 1.0, 0.0,
+                  0.0, 0.0, 1.0]
 
     gravity_m_s2: 9.806
     init_pos_noise: 0.0
@@ -37,7 +37,7 @@ publish:
     dense_publish_en: false       # false will low down the points number in a global-frame point clouds scan.
     scan_bodyframe_pub_en: true  # output the point cloud scans in a body frame
     publish_cloud_in_imu_frame: false # output the point cloud scans in IMU-frame or lidar-frame
-    output_ref_frame: lidar
+    output_ref_frame: imu
     show_submap: false
 
 pcd_save:

@@ -399,8 +399,8 @@ void rotate_lidar_points(const std::string& fn,
                          const PoseVector& assoc_encoder_poses,
                          const std::string& outbagname,
                          const std::string& topic) {
-    // rotate the lidar points in each frame to the encoder frame, using the equation
-    // p_E = E_T_Er Er_T_L p_L
+    // rotate the lidar points in each frame to the IMU frame, using the equation
+    // p_I = I_T_E E_T_Er Er_T_L p_L
     // and then save the points to a new lidar point cloud2 message.
     // Note p_W = W_T_E E_T_Er Er_T_L p_L
     // W is a stationary frame on Earth.
@@ -417,7 +417,7 @@ void rotate_lidar_points(const std::string& fn,
                              Eigen::Quaterniond(0.703768612596697, 0.009711627769598887, 0.7102844361843709, 0.01055670043315378);
     Eigen::Affine3d E_T_I = Eigen::Translation3d(-0.03587546555175705, 0.005730217182290136, 0.032125318431006494) *
                             Eigen::Quaterniond(0.005488590158788708, 0.5002131474472541, -0.0020782735504224405, 0.8658824188526003);
-
+    Eigen::Affine3d I_T_E = E_T_I.inverse();
     rosbag::Bag bag;
     rosbag::Bag outbag;
     bag.open(fn, rosbag::bagmode::Read);
@@ -447,14 +447,14 @@ void rotate_lidar_points(const std::string& fn,
                 }
                 Eigen::Affine3d E_T_Er = interpolate_pose(assoc_enc_sensor_times, assoc_encoder_poses, point_time);
 
-                // Apply the transformation: p_E = E_T_Er * Er_T_L * p_L
+                // Apply the transformation: p_I = I_T_E * E_T_Er * Er_T_L * p_L
                 Eigen::Vector3d p_L(point.x, point.y, point.z);
-                Eigen::Vector3d p_E = E_T_Er * Er_T_L * p_L;
+                Eigen::Vector3d p_I = I_T_E * E_T_Er * Er_T_L * p_L;
                 // Create a new point with transformed coordinates
                 hovermap_velodyne::Point transformed_point = point;  // Copy the original point's metadata
-                transformed_point.x = p_E.x();
-                transformed_point.y = p_E.y();
-                transformed_point.z = p_E.z();
+                transformed_point.x = p_I.x();
+                transformed_point.y = p_I.y();
+                transformed_point.z = p_I.z();
                 transformed_cloud.push_back(transformed_point);
             }
             if (new_bad > 0) {
@@ -468,6 +468,7 @@ void rotate_lidar_points(const std::string& fn,
                 pcl::toROSMsg(transformed_cloud, transformed_msg);
                 transformed_msg.header = cloud_msg->header;  // Preserve the header
                 transformed_msg.header.stamp = ros::Time(transformed_cloud.points.front().timestamp);  // Set to the first point's sensor time
+                transformed_msg.header.frame_id = "imu";
 
                 // Write the new PointCloud2 message to the output bag
                 outbag.write(topic, transformed_msg.header.stamp, transformed_msg);
@@ -708,22 +709,6 @@ void aggregate_scans(std::string bagname, std::string posefile, std::string outp
     PoseVector W_T_B_list;
     read_poses(posefile, posetimes, W_T_B_list);
 
-    Eigen::Affine3d E_T_I = Eigen::Translation3d(-0.03587546555175705, 0.005730217182290136, 0.032125318431006494) *
-                            Eigen::Quaterniond(0.005488590158788708, 0.5002131474472541, -0.0020782735504224405, 0.8658824188526003);
-    Eigen::Affine3d I_T_E = E_T_I.inverse();
-    PoseVector W_T_E_list;
-    if (0) {
-        transform_poses(W_T_B_list, I_T_E, W_T_E_list);
-    } else if (0) {
-        W_T_E_list = W_T_B_list;
-    } else {
-        std::cout << "Ignore poses in aggregation" << std::endl;
-        W_T_E_list = W_T_B_list;
-        for (size_t i = 0; i < W_T_E_list.size(); ++i) {
-            W_T_E_list[i].setIdentity();
-        }
-    }
-
     const ros::Duration host_time_from_sensor_time(1724899451, 232580000);
 
     rosbag::Bag bag;
@@ -748,10 +733,10 @@ void aggregate_scans(std::string bagname, std::string posefile, std::string outp
                 ros::Time sensor_time(sensor_time_sec);
                 ros::Time gps_time = sensor_time + host_time_from_sensor_time;
 
-                Eigen::Affine3d W_T_E = interpolate_pose(posetimes, W_T_E_list, gps_time);
+                Eigen::Affine3d W_T_B = interpolate_pose(posetimes, W_T_B_list, gps_time);
 
-                Eigen::Vector3d p_E(point.x, point.y, point.z);
-                Eigen::Vector3d p_W = W_T_E * p_E;
+                Eigen::Vector3d p_B(point.x, point.y, point.z);
+                Eigen::Vector3d p_W = W_T_B * p_B;
 
                 pcl::PointXYZI transformed_point;
                 transformed_point.x = p_W.x();
@@ -783,7 +768,7 @@ int main(const int argc, char **argv) {
     }
 
     if (argc == 1) {
-        std::cout << "Usage: " << argv[0] << " path/to/hovermap/data.bag [path/to/output/dir(Log)] [tol_ms(6.0)]" << std::endl;
+        std::cout << "Usage: " << argv[0] << " path/to/hovermap/data.bag [path/to/output/dir(Log)] [tol_ms(5.0)]" << std::endl;
         return 0;
     }
 
@@ -792,7 +777,7 @@ int main(const int argc, char **argv) {
     if (argc > 2)
         outdir = argv[2];
     std::cout << "Output for intermediate files: " << outdir << std::endl;
-    double tol_ms = 6.0;
+    double tol_ms = 5.0;
     if (argc > 3)
         tol_ms = std::stod(argv[3]);
     std::cout << "pps and data host time association max diff " << std::fixed
