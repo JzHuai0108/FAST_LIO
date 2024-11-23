@@ -14,11 +14,40 @@
 #include <tf2_msgs/TFMessage.h>
 
 #include <boost/foreach.hpp>
+#include <boost/filesystem.hpp> // sudo apt-get install libboost-filesystem-dev libboost-system-dev
 
 #include <algorithm>  // For std::lower_bound
 #include <iostream>
 #include <string>
 
+bool is_directory(const std::string& path) {
+    boost::filesystem::path p(path);
+    return boost::filesystem::is_directory(p);
+}
+
+void create_directories(const std::string& path) {
+    boost::filesystem::path dir(path);
+    if (!boost::filesystem::exists(dir)) {
+        if (!boost::filesystem::create_directories(dir)) {
+            throw std::runtime_error("Error creating directory: " + path);
+        }
+    }
+}
+
+std::vector<std::string> search_bag_files(const std::string& dir) {
+    std::vector<std::string> bagnames;
+    boost::filesystem::path p(dir);
+
+    if (boost::filesystem::exists(p) && boost::filesystem::is_directory(p)) {
+        for (const auto& entry : boost::filesystem::directory_iterator(p)) {
+            if (boost::filesystem::is_regular_file(entry) && entry.path().extension() == ".bag") {
+                bagnames.push_back(entry.path().string());
+            }
+        }
+    }
+
+    return bagnames;
+}
 
 void read_pps_times(const std::string& bagname, std::vector<ros::Time> *host_times,
         std::vector<ros::Time> *sensor_times, const std::string& topic="/encoder/pps_timestamp") {
@@ -250,7 +279,7 @@ void associate_data_to_pps(const std::vector<ros::Time>& data_host_times,
             assoc_datalist->push_back(datalist[data_idx]);
 
             // Update start index to avoid rechecking previous entries
-            start_idx = closest_idx;
+            start_idx = closest_idx + 1;
         } else {
             std::cout << "Warn: fail to find pps host time for data at " << data_time << std::endl;
         }
@@ -584,7 +613,7 @@ void merge_rosbags(const std::vector<std::string>& input_bags, const std::string
     }
 
     outbag.close();
-    std::cout << "All bags have been merged into " << output_bag << std::endl;
+    std::cout << "Bags have been merged into " << output_bag << std::endl;
 }
 
 
@@ -699,6 +728,10 @@ typedef pcl::PointCloud<hovermap_velodyne::Point> PointCloudHovermap;
 typedef pcl::PointCloud<pcl::PointXYZI> PointCloudXYZI;
 void aggregate_scans(std::string bagname, std::string posefile, std::string outpcd, 
         std::string topic = "/velodyne_points", double start_time=0, double end_time=10) {
+    // TODO(jhuai): first get correspondences of pps sensor times and host times, either encoder or IMU data is OK;
+    // then use convex hull to smooth the host jitters, thus a mapping from sensor time to host times 
+    // then use the mapping to map the gt host time to sensor time for pose interpolation.
+
     // bagname: point cloud bag file rectified by rotating the lidar points to the static encoder frame
     // posefile: the hovermap .xyz traj output text file
     // outpcd: aggregated point cloud file
@@ -758,31 +791,7 @@ void aggregate_scans(std::string bagname, std::string posefile, std::string outp
     std::cout << "Saved aggregated point cloud from " << numframes << " frames to " << outpcd << std::endl;
 }
 
-int main(const int argc, char **argv) {
-    if (0) {
-        std::string bagname = "Log/aligned.bag";
-        std::string posefile = "Output/0829445e8e93_01_Output_traj.xyz";
-        std::string outpcd = "Log/merged.pcd";
-        aggregate_scans(bagname, posefile, outpcd, "/velodyne_points", 0.1);
-        return 0;
-    }
-
-    if (argc == 1) {
-        std::cout << "Usage: " << argv[0] << " path/to/hovermap/data.bag [path/to/output/dir(Log)] [tol_ms(5.0)]" << std::endl;
-        return 0;
-    }
-
-    std::string fn = argv[1];
-    std::string outdir = "Log";
-    if (argc > 2)
-        outdir = argv[2];
-    std::cout << "Output for intermediate files: " << outdir << std::endl;
-    double tol_ms = 5.0;
-    if (argc > 3)
-        tol_ms = std::stod(argv[3]);
-    std::cout << "pps and data host time association max diff " << std::fixed
-              << std::setprecision(2) << tol_ms << " ms" << std::endl;
-
+std::string rectify_bag(const std::string &fn, const std::string & subfolder, double tol_ms) {
     std::vector<ros::Time> encoder_host_times, encoder_sensor_times;
     read_pps_times(fn, &encoder_host_times, &encoder_sensor_times, "/encoder/pps_timestamp");
 
@@ -828,44 +837,119 @@ int main(const int argc, char **argv) {
     } else {
         std::cout << "No encoder poses available." << std::endl;
     }
-    std::string tffile = outdir + "/tf_host_times.txt";
-    std::string ppsfile = outdir + "/encoder_pps_times.txt";
+
+    std::string tffile = subfolder + "/tf_host_times.txt";
+    std::string ppsfile = subfolder + "/encoder_pps_times.txt";
     save_times(encoder_host_times, encoder_sensor_times, ppsfile);
     save_times(tf_host_times, std::vector<ros::Time>(), tffile);
 
-    std::string imufile = outdir + "/imu_data.txt";
-    std::string imuppsfile = outdir + "/imu_pps_times.txt";
+    std::string imufile = subfolder + "/imu_data.txt";
+    std::string imuppsfile = subfolder + "/imu_pps_times.txt";
     save_time_and_imu(imu_host_times, imu_datalist, imufile);
     save_times(imu_pps_host_times, imu_pps_sensor_times, imuppsfile);
 
     std::vector<ros::Time> assoc_enc_sensor_times;
     PoseVector assoc_encoder_poses;
+    std::cout << "Associating tf data to encoder pps..." << std::endl;
     associate_data_to_pps(tf_host_times, tf_encoder_poses, encoder_host_times,
             encoder_sensor_times, &assoc_enc_sensor_times, &assoc_encoder_poses, tol_ms);
 
-    std::string assocfile = outdir + "/assoc_encoder_timed_poses.txt";
+    std::string assocfile = subfolder + "/assoc_encoder_timed_poses.txt";
     save_time_and_poses(assoc_enc_sensor_times, assoc_encoder_poses, assocfile);
 
-    std::string basename = fn.substr(fn.find_last_of("/\\") + 1); // Extract the filename only (remove path)
-    basename = basename.substr(0, basename.size() - 4); // Remove the last 4 characters (e.g., ".bag")
-    std::string outbagname1 = outdir + "/" + basename + "_encoder.bag";
+    std::string outbagname1 = subfolder + "/encoder.bag";
     save_encoder_to_bag(assoc_enc_sensor_times, assoc_encoder_poses, outbagname1, "/tf");
 
-    std::string outbagname2 = outdir + "/" + basename + "_velodyne.bag";
+    std::string outbagname2 = subfolder + "/velodyne.bag";
     rotate_lidar_points(fn, assoc_enc_sensor_times, assoc_encoder_poses, outbagname2, "/velodyne_points");
 
     std::vector<ros::Time> assoc_imu_sensor_times;
     ImuDataVector assoc_imu_data;
+    std::cout << "Associating IMU data to IMU pps..." << std::endl;
     associate_data_to_pps(imu_host_times, imu_datalist, imu_pps_host_times,
             imu_pps_sensor_times, &assoc_imu_sensor_times, &assoc_imu_data, tol_ms);
-    std::string assoc_imu_file = outdir + "/assoc_imu_timed_data.txt";
+    std::string assoc_imu_file = subfolder + "/assoc_imu_timed_data.txt";
     save_time_and_imu(assoc_imu_sensor_times, assoc_imu_data, assoc_imu_file);
 
-    std::string outbagname3 = outdir + "/" + basename + "_imu.bag";
+    std::string outbagname3 = subfolder + "/imu.bag";
     save_imu_to_bag(assoc_imu_sensor_times, assoc_imu_data, outbagname3, "/imu/data");
 
-    std::string outbagname = outdir + "/" + basename + "_aligned.bag";
+    std::string outbagname = subfolder + "/aligned.bag";
     merge_rosbags({outbagname1, outbagname2, outbagname3}, outbagname);
 
+    return outbagname;
+}
+
+int main(const int argc, char **argv) {
+    if (0) {
+        std::string bagname = "Log/aligned.bag";
+        std::string posefile = "Output/0829445e8e93_01_Output_traj.xyz";
+        std::string outpcd = "Log/merged.pcd";
+        aggregate_scans(bagname, posefile, outpcd, "/velodyne_points", 0.1);
+        return 0;
+    }
+
+    if (argc == 1) {
+        std::cout << "Usage: " << argv[0] << " path/to/hovermap/data.bag [path/to/output/dir(Log)] [tol_ms(5.0)]" << std::endl;
+        return 0;
+    }
+
+    std::string fn = argv[1];
+    std::string outdir = "Log";
+    if (argc > 2)
+        outdir = argv[2];
+    if (!outdir.empty() && outdir.back() == '/') {
+        outdir.pop_back(); // Remove the last character if it's a '/'
+    }
+
+    std::cout << "Output for intermediate files: " << outdir << std::endl;
+    double tol_ms = 8.0;
+    if (argc > 3)
+        tol_ms = std::stod(argv[3]);
+    std::cout << "pps and data host time association max diff " << std::fixed
+              << std::setprecision(2) << tol_ms << " ms" << std::endl;
+
+    std::vector<std::string> bagnames;
+
+    // Check if `fn` is a directory or a file
+    if (fn.size() > 4 && fn.substr(fn.size() - 4) == ".bag") {
+        bagnames.push_back(fn);
+    } else if (is_directory(fn)) {
+        bagnames = search_bag_files(fn);
+    }
+
+    // Sort the bag files (assuming names are of the format `xxx_0.bag`, `xxx_1.bag`, etc.)
+    std::sort(bagnames.begin(), bagnames.end());
+    std::cout << "Rectifying the below bags:" << std::endl;
+    size_t i = 0;
+    for (const auto& name : bagnames) {
+        std::cout << i << ": " << name << std::endl;
+        ++i;
+    }
+    std::vector<std::string> rectified_bagnames;
+    rectified_bagnames.reserve(bagnames.size());
+    for (const auto& bagname : bagnames) {
+        // Extract the filename without extension
+        std::string basename = bagname.substr(bagname.find_last_of("/\\") + 1);
+        basename = basename.substr(0, basename.size() - 4);
+
+        // Create a subfolder in the output directory
+        std::string subfolder = outdir + "/" + basename;
+        create_directories(subfolder);
+
+        std::string newbagname = rectify_bag(bagname, subfolder, tol_ms);
+        rectified_bagnames.push_back(newbagname);
+    }
+
+    if (rectified_bagnames.size() > 1) {
+        std::string bagname0 = bagnames[0];
+        std::string basename = bagname0.substr(bagname0.find_last_of("/\\") + 1);
+        basename = basename.substr(0, basename.size() - 6);
+        std::string outbagname = outdir + "/" + basename + "_aligned.bag";
+        merge_rosbags(rectified_bagnames, outbagname);
+        std::cout << "The overall rectified bag is saved at " << outbagname << std::endl;
+    } else {
+        std::cout << "The rectified bag is saved at " << rectified_bagnames[0] << std::endl;
+    }
     return 0;
 }
