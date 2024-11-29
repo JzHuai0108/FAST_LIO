@@ -617,15 +617,15 @@ void merge_rosbags(const std::vector<std::string>& input_bags, const std::string
 }
 
 
-ros::Time parseGpsTime(const std::string& gps_time_str) {
-    size_t dot_pos = gps_time_str.find('.');
+ros::Time parseTimeStr(const std::string& time_str) {
+    size_t dot_pos = time_str.find('.');
     if (dot_pos == std::string::npos) {
         throw std::invalid_argument("Invalid GPS time format: no decimal point found.");
     }
 
     // Split the string into the seconds and fractional parts
-    std::string sec_str = gps_time_str.substr(0, dot_pos);
-    std::string nsec_str = gps_time_str.substr(dot_pos + 1);
+    std::string sec_str = time_str.substr(0, dot_pos);
+    std::string nsec_str = time_str.substr(dot_pos + 1);
 
     // Convert the seconds part to an integer
     int sec = std::stoi(sec_str);
@@ -644,7 +644,47 @@ ros::Time parseGpsTime(const std::string& gps_time_str) {
     return ros::Time(sec, nsec);
 }
 
-void read_poses(const std::string& posefile, std::vector<ros::Time>& posetimes, PoseVector& W_T_E_list) {
+void read_poses_tum(const std::string& posefile, std::vector<ros::Time>& posetimes, PoseVector& W_T_B_list) {
+    // each line time px py pz qx qy qz qw
+    std::ifstream file(posefile);
+    if (!file.is_open()) {
+        throw std::runtime_error("Unable to open pose file: " + posefile);
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        // Skip empty lines
+        if (line.empty()) continue;
+
+        std::istringstream ss(line);
+        std::string time_str;
+        double px, py, pz, qx, qy, qz, qw;
+
+        // Read the line and parse the values
+        if (!(ss >> time_str >> px >> py >> pz >> qw >> qx >> qy >> qz)) {
+            std::cerr << "Error: Malformed line in pose file: " << line << std::endl;
+            continue;  // Skip to the next line
+        }
+
+        // Parse time string to ros::Time
+        try {
+            ros::Time pose_time = parseTimeStr(time_str);
+            posetimes.push_back(pose_time);
+        } catch (const std::exception& e) {
+            std::cerr << "Error parsing time: " << time_str << " (" << e.what() << ")" << std::endl;
+            continue;
+        }
+
+        // Create pose matrix and add to W_T_B_list
+        Eigen::Matrix<double, 7, 1> pose;
+        pose << px, py, pz, qx, qy, qz, qw;
+        W_T_B_list.push_back(pose);
+    }
+
+    file.close();
+}
+
+void read_poses(const std::string& posefile, std::vector<ros::Time>& posetimes, PoseVector& W_T_B_list) {
     // each line, time gpstime x y z pitch roll yaw rot.w rot.x rot.y rot.z
     // we save extract gpstime, xyz and rot.xyzw
     std::ifstream infile(posefile);
@@ -654,7 +694,7 @@ void read_poses(const std::string& posefile, std::vector<ros::Time>& posetimes, 
     }
 
     posetimes.reserve(1000);
-    W_T_E_list.reserve(1000);
+    W_T_B_list.reserve(1000);
     std::string line;
     while (std::getline(infile, line)) {
         std::istringstream ss(line);
@@ -667,9 +707,9 @@ void read_poses(const std::string& posefile, std::vector<ros::Time>& posetimes, 
             continue;  // Skip to the next line
         }
 
-        // Parse gps_time string to ros::Time using parseGpsTime
+        // Parse gps_time string to ros::Time using parseTimeStr
         try {
-            ros::Time pose_time = parseGpsTime(gps_time_str);
+            ros::Time pose_time = parseTimeStr(gps_time_str);
             posetimes.push_back(pose_time);
         } catch (const std::exception& e) {
             std::cerr << "Error: Failed to parse gps_time for line: " << line << " (" << e.what() << ")" << std::endl;
@@ -679,14 +719,14 @@ void read_poses(const std::string& posefile, std::vector<ros::Time>& posetimes, 
         // Create a 7D vector for the pose (x, y, z, rot_x, rot_y, rot_z, rot_w)
         Eigen::Matrix<double, 7, 1> pose;
         pose << x, y, z, rot_x, rot_y, rot_z, rot_w;
-        W_T_E_list.push_back(pose);
+        W_T_B_list.push_back(pose);
     }
 
     infile.close();
     std::cout << "Finished reading poses from " << posefile << std::endl;
     std::cout << "First time " << posetimes[0] << ", pose";
     for (int i = 0; i < 7; ++i) {
-        std::cout << " " << W_T_E_list[0][i];
+        std::cout << " " << W_T_B_list[0][i];
     }
     std::cout << std::endl;
 }
@@ -726,23 +766,22 @@ void transform_poses(const PoseVector& W_T_I_list, const Eigen::Affine3d& I_T_E,
 
 typedef pcl::PointCloud<hovermap_velodyne::Point> PointCloudHovermap;
 typedef pcl::PointCloud<pcl::PointXYZI> PointCloudXYZI;
-void aggregate_scans(std::string bagname, std::string posefile, std::string outpcd, 
-        std::string topic = "/velodyne_points", double start_time=0, double end_time=10) {
-    // TODO(jhuai): first get correspondences of pps sensor times and host times, either encoder or IMU data is OK;
-    // then use convex hull to smooth the host jitters, thus a mapping from sensor time to host times 
-    // then use the mapping to map the gt host time to sensor time for pose interpolation.
 
+bool select_scan(const ros::Time& last_scan_time, const ros::Time& curr_scan_time, double desired_fps) {
+    return (curr_scan_time - last_scan_time) >= ros::Duration(1.0 / desired_fps);
+}
+
+// This function is problematic because it requires the device is perfectly static which is often not realistic.
+void aggregate_scans_static(std::string bagname, std::string outpcd, 
+        std::string topic = "/velodyne_points",  int fps_dsf=5, int pts_dsf=20,
+        double start_time=0, double end_time=10) {
     // bagname: point cloud bag file rectified by rotating the lidar points to the static encoder frame
-    // posefile: the hovermap .xyz traj output text file
+    // we assume the identity pose for all scans.
     // outpcd: aggregated point cloud file
     // topic: /velodyne_points
+    // fps_dsf: downsampling factor for frame rates to reduce the size of the outpcd
     // start_time: relative to the begin of the rosbag
     // end_time: relative to the begin of the rosbag
-    std::vector<ros::Time> posetimes;
-    PoseVector W_T_B_list;
-    read_poses(posefile, posetimes, W_T_B_list);
-
-    const ros::Duration host_time_from_sensor_time(1724899451, 232580000);
 
     rosbag::Bag bag;
     bag.open(bagname, rosbag::bagmode::Read);
@@ -753,15 +792,112 @@ void aggregate_scans(std::string bagname, std::string posefile, std::string outp
     std::cout << "Aggregating points from " << start << " to  " << finish << " of " << bagname << std::endl;
     PointCloudXYZI aggregated_cloud;
     int numframes = 0;
+    ros::Time last_scan_time(0);
     BOOST_FOREACH(rosbag::MessageInstance const m, view) {
         sensor_msgs::PointCloud2::ConstPtr cloud_msg = m.instantiate<sensor_msgs::PointCloud2>();
         if (cloud_msg != nullptr && (cloud_msg->header.stamp > bag_start_time + start && 
                 cloud_msg->header.stamp <= bag_start_time + finish)) {
+            bool keep = select_scan(last_scan_time, cloud_msg->header.stamp, 20 / fps_dsf);
+            if (!keep) {
+                continue;
+            }
+            last_scan_time = cloud_msg->header.stamp;
             PointCloudHovermap scan_cloud;
             pcl::fromROSMsg(*cloud_msg, scan_cloud);
 
             PointCloudXYZI transformed_scan_cloud;
+            int count = 0;
             for (const auto& point : scan_cloud) {
+                if (count % pts_dsf != 0) {
+                    ++count;
+                    continue;
+                }
+                Eigen::Vector3d p_B(point.x, point.y, point.z);
+                Eigen::Vector3d p_W = p_B;
+
+                pcl::PointXYZI transformed_point;
+                transformed_point.x = p_W.x();
+                transformed_point.y = p_W.y();
+                transformed_point.z = p_W.z();
+                transformed_point.intensity = point.intensity;  // Copy intensity from the original point
+                transformed_scan_cloud.push_back(transformed_point);
+                ++count;
+            }
+            ++numframes;
+            aggregated_cloud += transformed_scan_cloud;  // Append the current scan to the aggregated point cloud
+        }
+    }
+
+    bag.close();
+
+    // Save the aggregated point cloud to a PCD file
+    pcl::io::savePCDFileASCII(outpcd, aggregated_cloud);
+    std::cout << "Saved aggregated point cloud from " << numframes << " frames to " << outpcd << std::endl;
+}
+
+// This function is problematic because it uses low frequency poses to interpolate poses for high frequency lidar points
+// thus the poses may be inaccurate.
+void aggregate_scans(std::string bagname, std::string posefile, std::string outpcd, 
+        std::string topic = "/velodyne_points", 
+        int fps_dsf=5, int pts_dsf=20,
+        double start_time=0, double end_time=10) {
+    // TODO(jhuai): first get correspondences of pps sensor times and host times, either encoder or IMU data is OK;
+    // then use convex hull to smooth the host jitters, thus a mapping from sensor time to host times 
+    // then use the mapping to map the gt host time to sensor time for pose interpolation.
+
+    // bagname: point cloud bag file rectified by rotating the lidar points to the static encoder frame
+    // posefile: the hovermap .xyz traj output text file.
+    // outpcd: aggregated point cloud file
+    // topic: /velodyne_points
+    // start_time: relative to the begin of the rosbag
+    // end_time: relative to the begin of the rosbag
+    // fps_dsf: downsampling factor for frame rates to reduce the size of the outpcd
+    std::vector<ros::Time> posetimes;
+    PoseVector W_T_B_list;
+    if (posefile.substr(posefile.size() - 4) == ".xyz") {
+        read_poses(posefile, posetimes, W_T_B_list);
+    } else {
+        read_poses_tum(posefile, posetimes, W_T_B_list);
+    }
+
+    // kiss icp time is at the start of scan, but its motion is at the middle of the scan.
+    const ros::Duration kiss_icp_dt(0.5/20);
+    for (auto& time : posetimes) {
+        time += kiss_icp_dt;
+    }
+
+    // const ros::Duration host_time_from_sensor_time(1724899451, 232580000);
+    const ros::Duration host_time_from_sensor_time(0);
+
+    rosbag::Bag bag;
+    bag.open(bagname, rosbag::bagmode::Read);
+    rosbag::View view(bag, rosbag::TopicQuery(topic));
+    ros::Time bag_start_time = view.getBeginTime();
+    ros::Duration start(start_time);
+    ros::Duration finish(end_time);
+    std::cout << "Aggregating points from " << start << " to  " << finish << " of " << bagname << std::endl;
+    PointCloudXYZI aggregated_cloud;
+    int numframes = 0;
+    ros::Time last_scan_time(0);
+    BOOST_FOREACH(rosbag::MessageInstance const m, view) {
+        sensor_msgs::PointCloud2::ConstPtr cloud_msg = m.instantiate<sensor_msgs::PointCloud2>();
+        if (cloud_msg != nullptr && (cloud_msg->header.stamp > bag_start_time + start && 
+                cloud_msg->header.stamp <= bag_start_time + finish)) {
+            bool keep = select_scan(last_scan_time, cloud_msg->header.stamp, 20 / fps_dsf);
+            if (!keep) {
+                continue;
+            }
+            last_scan_time = cloud_msg->header.stamp;
+            PointCloudHovermap scan_cloud;
+            pcl::fromROSMsg(*cloud_msg, scan_cloud);
+
+            PointCloudXYZI transformed_scan_cloud;
+            int count = 0;
+            for (const auto& point : scan_cloud) {
+                if (count % pts_dsf != 0) {
+                    ++count;
+                    continue;
+                }
                 double sensor_time_sec = point.timestamp;  // Using the timestamp field from hovermap_velodyne::Point
                 ros::Time sensor_time(sensor_time_sec);
                 ros::Time gps_time = sensor_time + host_time_from_sensor_time;
@@ -778,6 +914,7 @@ void aggregate_scans(std::string bagname, std::string posefile, std::string outp
                 transformed_point.intensity = point.intensity;  // Copy intensity from the original point
 
                 transformed_scan_cloud.push_back(transformed_point);
+                ++count;
             }
             ++numframes;
             aggregated_cloud += transformed_scan_cloud;  // Append the current scan to the aggregated point cloud
