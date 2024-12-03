@@ -54,6 +54,7 @@ find_package(catkin REQUIRED COMPONENTS
   livox_ros_driver2
   message_generation
   eigen_conversions
+  genmsg
 )
 
 find_package(Eigen3 REQUIRED)
@@ -85,6 +86,7 @@ catkin_package(
 )
 
 add_library(fastlio_tam src/laserMapping.cpp include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp src/publish_tf.cpp)
+add_dependencies(fastlio_tam fast_lio_gencfg fast_lio_generate_messages_cpp)
 target_link_libraries(fastlio_tam ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
 target_include_directories(fastlio_tam PRIVATE ${PYTHON_INCLUDE_DIRS})
 
