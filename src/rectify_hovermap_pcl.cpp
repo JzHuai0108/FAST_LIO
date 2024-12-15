@@ -1,6 +1,13 @@
 /**
  * rectify the points in ROS1 PointCloud2 messages of hovermap rosbags
  * by transforming these points to the stationary encoder frame.
+ * 
+ * By comparing two sessions of hovermap data, we found that the data from different devices
+ * may have very different IMU extrinsic parameters.
+ * 
+ * By aligning the kiss-icp results and the IMU data, 
+ * we found there is a big time offset about 3 seconds, between lidar data and the IMU data.
+ *
  */
 
 #include "hovermap.h"
@@ -133,26 +140,83 @@ void read_encoder_tf_msgs(const std::string fn, std::vector<ros::Time> *host_tim
     rosbag::Bag bag;
     bag.open(fn, rosbag::bagmode::Read);
     rosbag::View view(bag, rosbag::TopicQuery(topic));
+    host_times->reserve(1000);
+    poses->reserve(1000);
 
     BOOST_FOREACH(rosbag::MessageInstance const m, view) {
         tf2_msgs::TFMessage::ConstPtr msg = m.instantiate<tf2_msgs::TFMessage>();
         if (msg != nullptr) {
             for (const auto& transform : msg->transforms) {
-                host_times->push_back(transform.header.stamp);
+                if (transform.header.frame_id == "encoder" && transform.child_frame_id == "encoder_rotating") {
+                    host_times->push_back(transform.header.stamp);
 
-                Eigen::Matrix<double, 7, 1> pose;
-                pose(0) = transform.transform.translation.x;
-                pose(1) = transform.transform.translation.y;
-                pose(2) = transform.transform.translation.z;
-                pose(3) = transform.transform.rotation.x;
-                pose(4) = transform.transform.rotation.y;
-                pose(5) = transform.transform.rotation.z;
-                pose(6) = transform.transform.rotation.w;
-                poses->push_back(pose);
+                    Eigen::Matrix<double, 7, 1> pose;
+                    pose(0) = transform.transform.translation.x;
+                    pose(1) = transform.transform.translation.y;
+                    pose(2) = transform.transform.translation.z;
+                    pose(3) = transform.transform.rotation.x;
+                    pose(4) = transform.transform.rotation.y;
+                    pose(5) = transform.transform.rotation.z;
+                    pose(6) = transform.transform.rotation.w;
+                    poses->push_back(pose);
+                }
             }
         }
     }
     bag.close();
+
+    // Sort the host_times and poses based on host_times
+    // Create an index vector to sort by timestamps
+    std::vector<int> indices(host_times->size());
+    std::iota(indices.begin(), indices.end(), 0);  // Fill indices with 0, 1, 2, ...
+
+    // Sort indices based on the corresponding timestamps
+    std::sort(indices.begin(), indices.end(), [&](int i1, int i2) {
+        return (*host_times)[i1] < (*host_times)[i2];
+    });
+
+    // Create sorted vectors based on the indices
+    std::vector<ros::Time> sorted_times;
+    sorted_times.reserve(host_times->size());
+    PoseVector sorted_poses;
+    sorted_poses.reserve(host_times->size());
+    for (int idx : indices) {
+        sorted_times.push_back((*host_times)[idx]);
+        sorted_poses.push_back((*poses)[idx]);
+    }
+
+    // Update the original vectors with sorted data
+    *host_times = sorted_times;
+    *poses = sorted_poses;
+
+    // Step 2: Find and remove duplicates by comparing adjacent elements in the sorted list
+    std::vector<ros::Time> unique_times;
+    PoseVector unique_poses;
+    unique_times.reserve(host_times->size());
+    unique_poses.reserve(host_times->size());
+
+    ros::Time last_time = ros::Time(0);  // Initialize to a non-valid time
+    for (size_t i = 0; i < host_times->size(); ++i) {
+        // Check if the current time is a duplicate (same as previous one)
+        if ((*host_times)[i] != last_time) {
+            unique_times.push_back((*host_times)[i]);
+            unique_poses.push_back((*poses)[i]);
+        } else {
+            // If it's a duplicate, print it
+            std::cout << "Duplicate timestamp: " << (*host_times)[i] << " " << i-1 << ": "
+                      << std::fixed << std::setprecision(6) << (*poses)[i-1].transpose()
+                      << " " << i << ": " << (*poses)[i].transpose() << std::endl;
+        }
+        last_time = (*host_times)[i];  // Update the last_time to the current time
+    }
+
+    // Step 3: Update the original vectors with the unique values
+    size_t priorsize = host_times->size();
+    *host_times = unique_times;
+    *poses = unique_poses;
+
+    // Optionally, if you want to see the result after removing duplicates, you can print it
+    std::cout << "After removing duplicates, size reduced from " << priorsize << " to " << host_times->size() << std::endl;
 }
 
 
@@ -835,13 +899,13 @@ void aggregate_scans_static(std::string bagname, std::string outpcd,
     std::cout << "Saved aggregated point cloud from " << numframes << " frames to " << outpcd << std::endl;
 }
 
-// This function is problematic because it uses low frequency poses to interpolate poses for high frequency lidar points
+// This function is limited when it uses low frequency poses to interpolate poses for high frequency lidar points
 // thus the poses may be inaccurate.
 void aggregate_scans(std::string bagname, std::string posefile, std::string outpcd, 
         std::string topic = "/velodyne_points", 
         int fps_dsf=5, int pts_dsf=20,
         double start_time=0, double end_time=10) {
-    // TODO(jhuai): first get correspondences of pps sensor times and host times, either encoder or IMU data is OK;
+    // TODO(jhuai): first get correspondences of pps sensor times and host times, using the encoder data.
     // then use convex hull to smooth the host jitters, thus a mapping from sensor time to host times 
     // then use the mapping to map the gt host time to sensor time for pose interpolation.
 
@@ -1027,7 +1091,7 @@ int main(const int argc, char **argv) {
     }
 
     if (argc == 1) {
-        std::cout << "Usage: " << argv[0] << " path/to/hovermap/data.bag [path/to/output/dir(Log)] [tol_ms(5.0)]" << std::endl;
+        std::cout << "Usage: " << argv[0] << " path/to/hovermap/data/folder/or.bag [path/to/output/dir(Log)] [tol_ms(8.0)]" << std::endl;
         return 0;
     }
 
