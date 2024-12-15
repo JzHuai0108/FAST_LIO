@@ -67,6 +67,8 @@ For **Ubuntu 18.04 or higher**, the **default** PCL and Eigen is enough for FAST
 
 ROS    >= Melodic. [ROS Installation](http://wiki.ros.org/ROS/Installation)
 
+see [robostack](https://robostack.github.io/GettingStarted.html) to create a virtual ros env.
+
 ### 1.2. **PCL && Eigen**
 PCL    >= 1.8,   Follow [PCL Installation](http://www.pointclouds.org/downloads/linux.html).
 
@@ -83,25 +85,28 @@ git clone https://github.com/Livox-SDK/Livox-SDK2.git
 cd ./Livox-SDK2/
 mkdir build
 cd build
-cmake .. -DCMAKE_INSTALL_PREFIX=/home/$USER/Documents/slam_devel/
+
+conda activate ros_env
+cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/Documents/lidar/fastlioslam_ws/devel/
 make -j4
 make install
 ```
-
-see [robostack](https://robostack.github.io/GettingStarted.html) to create a virtual ros env.
 
 ```
 # livox ros driver2
 cd fastlioslam_ws/src/livox_ros_driver2
 conda activate ros_env # or mamba activate ros_env
-./build.sh ROS1 "$HOME/Documents/slam_devel" "$HOME/miniconda3/envs/ros_env"
+./build.sh ROS1 "$HOME/Documents/lidar/fastlioslam_ws/devel" "$HOME/Documents/lidar/fastlioslam_ws/devel;$HOME/miniconda3/envs/ros_env" # build in conda
+./build.sh ROS1 "$HOME/Documents/lidar/fastlioslam_ws/devel" "$HOME/Documents/lidar/fastlioslam_ws/devel" # build in ubuntu system
 
 # error: /usr/bin/env: ‘python’: No such file or directory
 sudo apt install python-is-python3
 
 cd fastlioslam_ws
 source devel/setup.bash
-catkin build fast_lio -DCMAKE_INSTALL_PREFIX="$HOME/Documents/slam_devel" -DCMAKE_PREFIX_PATH="$HOME/miniconda3/envs/ros_env;$HOME/Documents/lidar/fastlioslam_ws/devel"
+catkin build fast_lio -DCMAKE_INSTALL_PREFIX="$HOME/Documents/lidar/fastlioslam_ws/devel" -DCMAKE_PREFIX_PATH="$HOME/Documents/lidar/fastlioslam_ws/devel;$HOME/miniconda3/envs/ros_env" # build in conda
+
+catkin build fast_lio -DCMAKE_INSTALL_PREFIX="$HOME/Documents/lidar/fastlioslam_ws/devel" -DCMAKE_PREFIX_PATH="$HOME/Documents/lidar/fastlioslam_ws/devel" # build in ubuntu system
 
 ```
 
