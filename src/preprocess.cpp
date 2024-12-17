@@ -1,5 +1,8 @@
 #include "preprocess.h"
 #include "hovermap.h"
+#include <vector>
+
+using namespace std;
 
 #define RETURN0     0x00
 #define RETURN0AND1 0x10

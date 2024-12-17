@@ -3,7 +3,7 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <livox_ros_driver2/CustomMsg.h>
 
-using namespace std;
+// using namespace std;
 
 #define IS_VALID(a)  ((abs(a)>1e8) ? true : false)
 
@@ -39,7 +39,7 @@ namespace hesai_ros {
       PCL_ADD_POINT4D;
       float intensity;
       double timestamp;
-      uint16_t ring;
+      std::uint16_t ring;
       EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   };
 }  // namespace hesai_ros
@@ -137,7 +137,7 @@ class Preprocess
   // sensor_msgs::PointCloud2::ConstPtr pointcloud;
   PointCloudXYZI pl_full, pl_corn, pl_surf;
   PointCloudXYZI pl_buff[128]; //maximum 128 line lidar
-  vector<orgtype> typess[128]; //maximum 128 line lidar
+  std::vector<orgtype> typess[128]; //maximum 128 line lidar
   float time_unit_scale;
   int lidar_type, point_filter_num, N_SCANS, SCAN_RATE, time_unit;
   double blind;
@@ -152,11 +152,11 @@ class Preprocess
   void livox_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
-  void give_feature(PointCloudXYZI &pl, vector<orgtype> &types);
+  void give_feature(PointCloudXYZI &pl, std::vector<orgtype> &types);
   void pub_func(PointCloudXYZI &pl, const ros::Time &ct);
-  int  plane_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i, uint &i_nex, Eigen::Vector3d &curr_direct);
-  bool small_plane(const PointCloudXYZI &pl, vector<orgtype> &types, uint i_cur, uint &i_nex, Eigen::Vector3d &curr_direct);
-  bool edge_jump_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i, Surround nor_dir);
+  int  plane_judge(const PointCloudXYZI &pl, std::vector<orgtype> &types, uint i, uint &i_nex, Eigen::Vector3d &curr_direct);
+  bool small_plane(const PointCloudXYZI &pl, std::vector<orgtype> &types, uint i_cur, uint &i_nex, Eigen::Vector3d &curr_direct);
+  bool edge_jump_judge(const PointCloudXYZI &pl, std::vector<orgtype> &types, uint i, Surround nor_dir);
   
   int group_size;
   double disA, disB, inf_bound;

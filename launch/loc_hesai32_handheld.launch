@@ -8,7 +8,7 @@
     <arg name="locmode" default="true" />
     <arg name="init_lidar_pose_file" default="" />
     <arg name="bag_start_time" default="0" />
-    <arg name="state_filename" default="" />
+    <arg name="state_filename" default="scan_states.txt" />
     <arg name="save_dir" default="$(find fast_lio)/Log" />
     <arg name="tls_ref_traj_files" default="" />
 

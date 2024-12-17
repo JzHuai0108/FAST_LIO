@@ -65,6 +65,9 @@
 #include "preprocess.h"
 #include <ikd-Tree/ikd_Tree.h>
 
+using namespace std;
+using namespace Eigen;
+
 #define foreach BOOST_FOREACH
 #define INIT_TIME           (0.1)
 #define LASER_POINT_COV     (0.001)
