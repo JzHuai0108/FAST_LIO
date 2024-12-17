@@ -6,12 +6,12 @@
     <arg name="bagfile" default="" />
     <arg name="playbag" default="true" />
     <arg name="tls_dir" default="" />
-    <arg name="locmode" default="false" />
+    <arg name="odom_mode" default="0" />
     <arg name="init_lidar_pose_file" default="" />
     <arg name="save_dir" default="$(find fast_lio)/Log" />
     <rosparam command="load" file="$(find fast_lio)/config/vlp16_whu_ugv.yaml" />
 
-    <param name="locmode" type="bool" value="$(arg locmode)" />
+    <param name="odom_mode" type="int" value="$(arg odom_mode)" />
     <param name="tls_dir" type="string" value="$(arg tls_dir)" />
     <param name="init_lidar_pose_file" type="string" value="$(arg init_lidar_pose_file)" />
     <param name="feature_extract_enable" type="bool" value="0"/>

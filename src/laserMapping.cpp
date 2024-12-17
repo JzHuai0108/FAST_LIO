@@ -32,6 +32,8 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
+
+#include "lidar_localizer.h"
 #include <omp.h>
 #include <mutex>
 #include <math.h>
@@ -67,13 +69,6 @@
 
 using namespace std;
 using namespace Eigen;
-
-#define foreach BOOST_FOREACH
-#define INIT_TIME           (0.1)
-#define LASER_POINT_COV     (0.001)
-#define MAXN                (720000)
-#define PUBFRAME_PERIOD     (20)
-typedef std::vector<Eigen::Matrix<double, 5, 1>, Eigen::aligned_allocator<Eigen::Matrix<double, 5, 1>>> TlsPositionVector; // [x, y, z, projectid, scanid]
 
 /*** Time Log Variables ***/
 double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0, kdtree_delete_time = 0.0;
@@ -130,7 +125,7 @@ pcl::VoxelGrid<PointType> downSizeFilterSurf;
 pcl::VoxelGrid<pcl::PointXYZ> downSizeFilterMap;
 
 KD_TREE<PointType> ikdtree;
-bool locmode = false;
+int odom_mode = 0;
 std::string tls_dir = "";
 std::string init_lidar_pose_file = "";
 vector<double> init_world_t_imu(3, 0.0);
@@ -171,13 +166,6 @@ void SigHandle(int sig)
     ROS_WARN("catch sig %d", sig);
     sig_buffer.notify_all();
 }
-
-struct Pose3d {
-    SO3 R;
-    V3D p;
-    Pose3d() : R(Eye3d), p(Zero3d) {}
-    Pose3d(const SO3 &R_, const V3D &p_) : R(R_), p(p_) {}
-};
 
 inline void dump_lio_state_to_log(double lidar_end_time, const state_ikfom& state_point, FILE *fp, Pose3d &B_T_S) {
     fprintf(fp, "%.9lf ", lidar_end_time);
@@ -1042,7 +1030,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<bool>("pcd_save/pcd_save_en", pcd_save_en, false);
     nh.param<bool>("publish/publish_cloud_in_imu_frame", publish_cloud_in_imu_frame, true);
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
-    nh.param<bool>("locmode", locmode, false);
+    nh.param<int>("odom_mode", odom_mode, 0);
     nh.param<std::string>("publish/output_ref_frame", output_ref_frame, "lidar");
     nh.param<bool>("publish/show_submap", show_submap, false);
 
@@ -1152,7 +1140,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     lastMsgTime = ros::Time::now();
     nearest_scan_idx = -1;
 
-    if (locmode) {
+    if (odom_mode == ODOM_MODE::LocToMap) {
         std::cout << "init_lidar_pose_file: " << init_lidar_pose_file << std::endl;
         V3D init_w_t_lidar;
         M3D init_w_R_lidar;
@@ -1181,7 +1169,7 @@ int initializeSystem(ros::NodeHandle &nh) {
             ROS_WARN("No TLS reference trajectory files provided, TLS checkup disabled.");
         }
     }
-    cout << "locmode? " << locmode << ", filter_size_map " << filter_size_map_min << std::endl;
+    cout << "odom_mode? " << OdomModeToString(odom_mode) << ", filter_size_map " << filter_size_map_min << std::endl;
     cout << "init_world_t_imu_vec: " << init_world_t_imu_vec[0] << " " << init_world_t_imu_vec[1] << " " << init_world_t_imu_vec[2] << endl;
     cout << "init_world_R_imu: " << endl << init_world_R_imu << endl;
     cout << "init_world_v_imu_vec: " << init_world_v_imu_vec[0] << " " << init_world_v_imu_vec[1] << " " << init_world_v_imu_vec[2] << endl;
@@ -1209,7 +1197,7 @@ int initializeSystem(ros::NodeHandle &nh) {
             {
                 first_lidar_time = Measures.lidar_beg_time;
                 p_imu->first_lidar_time = first_lidar_time;
-                if (locmode) {
+                if (odom_mode == ODOM_MODE::LocToMap) {
                     p_imu->set_init_pose(init_world_t_imu_vec, init_world_R_imu, init_world_v_imu_vec);
                 }
                 flg_first_scan = false;
@@ -1245,15 +1233,15 @@ int initializeSystem(ros::NodeHandle &nh) {
             downSizeFilterSurf.filter(*feats_down_body);
             t1 = omp_get_wtime();
             feats_down_size = feats_down_body->points.size();
-            if (locmode) {
+            if (odom_mode == ODOM_MODE::LocToMap) {
                 ikdtree.set_downsample_param(filter_size_map_min);
                 nearest_scan_idx = load_close_tls_scans(tls_position_ids, nearest_scan_idx);
             }
             /*** initialize the map kdtree ***/
             if(ikdtree.Root_Node == nullptr)
             {
-                if (locmode)
-                    ROS_WARN("ikdtree should have been initialized ealier in locmode!");
+                if (odom_mode == ODOM_MODE::LocToMap)
+                    ROS_WARN("ikdtree should have been initialized ealier in odom_mode!");
                 if(feats_down_size > 5)
                 {
                     ikdtree.set_downsample_param(filter_size_map_min);
@@ -1321,7 +1309,7 @@ int initializeSystem(ros::NodeHandle &nh) {
             /*** add the feature points to map kdtree ***/
             
             t3 = omp_get_wtime();
-            if (locmode) {
+            if (odom_mode == ODOM_MODE::LocToMap) {
                 Eigen::Vector4d timed_position;
                 timed_position[0] = lidar_end_time;
                 timed_position.segment(1, 3) = pos_lid;

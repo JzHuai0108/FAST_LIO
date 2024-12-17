@@ -8,7 +8,7 @@
     <rosparam command="load" file="$(find fast_lio)/config/hovermap_st.yaml" />
   
     <param name="bag_start_time" type="string" value="$(arg bag_start_time)" />
-    <param name="locmode" type="bool" value="false" />
+    <param name="odom_mode" type="int" value="0" />
     <param name="bagfile" type="string" value="$(arg bagfile)" />
     <param name="feature_extract_enable" type="bool" value="0"/>
     <param name="point_filter_num" type="int" value="4"/>
