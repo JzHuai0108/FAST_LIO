@@ -54,6 +54,10 @@ size_t load_tls_project_poses(const std::string &tls_project_dir, TlsPositionVec
 
 ros::Time parseTimeStr(const std::string &time_str);
 
+// a kdtree has to be a global variable because of multithreading, see
+// https://github.com/hku-mars/ikd-Tree/issues/8
+extern KD_TREE<PointType> prior_map;
+
 class LidarLocalizer {
 public:
     // Localize lidar scans to a prior map, using odometry poses, covariance, and unskewed (accumulated) scans.
@@ -94,7 +98,7 @@ private:
 
     esekfom::esekf<state_ikfom, 12, input_ikfom> kf_;
     ros::Time statestamp_;
-    KD_TREE<PointType> ikdtree_;
+
 
     pcl::UniformSampling<PointType> downSizeFilterMap_;
     pcl::UniformSampling<PointType> downSizeFilterSurf_;

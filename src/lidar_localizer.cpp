@@ -3,6 +3,9 @@
 #include <sstream>
 #include <boost/algorithm/string.hpp>
 
+
+KD_TREE<PointType> prior_map;
+
 std::string OdomModeToString(int mode) {
     switch (mode) {
         case Odom:
@@ -159,7 +162,7 @@ void LidarLocalizer::initialize(const std::string &init_lidar_pose_file,
     tls_project_dir = tls_dir + "/project2/regis";
     load_tls_project_poses(tls_project_dir, tls_position_ids_);
 
-    ikdtree_.set_downsample_param(filter_size_map);
+    prior_map.set_downsample_param(filter_size_map);
     if (!tls_ref_traj_files.empty()) {
         std::vector<std::string> filenames;
         boost::split(filenames, tls_ref_traj_files, boost::is_any_of(";"));

@@ -124,6 +124,8 @@ PointCloudXYZI::Ptr _featsArray;
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
 pcl::VoxelGrid<pcl::PointXYZ> downSizeFilterMap;
 
+// a kdtree has to be a global variable because of multithreading, see
+// https://github.com/hku-mars/ikd-Tree/issues/8
 KD_TREE<PointType> ikdtree;
 int odom_mode = 0;
 std::string tls_dir = "";
