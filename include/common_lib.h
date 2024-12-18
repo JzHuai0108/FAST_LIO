@@ -48,10 +48,10 @@ typedef Eigen::Matrix3f M3F;
 #define MF(a,b)  Eigen::Matrix<float, (a), (b)>
 #define VF(a)    Eigen::Matrix<float, (a), 1>
 
-M3D Eye3d(M3D::Identity());
-M3F Eye3f(M3F::Identity());
-V3D Zero3d(0, 0, 0);
-V3F Zero3f(0, 0, 0);
+const static M3D Eye3d(M3D::Identity());
+const static M3F Eye3f(M3F::Identity());
+const static V3D Zero3d(0, 0, 0);
+const static V3F Zero3f(0, 0, 0);
 
 struct MeasureGroup     // Lidar data and imu dates for the curent process
 {
@@ -218,7 +218,7 @@ bool esti_normvector(Eigen::Matrix<T, 3, 1> &normvec, const PointVector &point, 
     return true;
 }
 
-float calc_dist(PointType p1, PointType p2){
+inline float calc_dist(PointType p1, PointType p2){
     float d = (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y) + (p1.z - p2.z) * (p1.z - p2.z);
     return d;
 }

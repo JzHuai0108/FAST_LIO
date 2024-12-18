@@ -869,102 +869,6 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     solve_time += omp_get_wtime() - solve_start_;
 }
 
-bool load_initial_lidar_pose(const std::string &init_lidar_pose_file, V3D &world_t_lidar,
-                             M3D &world_R_lidar, V3D &world_v_lidar) {
-    if (!init_lidar_pose_file.empty()) {
-        std::ifstream in(init_lidar_pose_file);
-        if (in.is_open()) {
-            double val[12];
-            for (int i = 0; i < 12; ++i) {
-                in >> val[i];
-            }
-            double vel[3] = {0};
-            try {
-                for (int i = 0; i < 3; ++i) {
-                    in >> vel[i];
-                }
-            } catch (...) {
-                std::cerr << "Warn: No velocity information in " << init_lidar_pose_file << std::endl;
-            }
-            in.close();
-            world_t_lidar = V3D(val[3], val[7], val[11]);
-            world_R_lidar << val[0], val[1], val[2],
-                             val[4], val[5], val[6],
-                             val[8], val[9], val[10];
-            world_v_lidar = V3D(vel[0], vel[1], vel[2]);
-            std::cout << "Start point in TLS: " << ", world_t_lidar:"
-                      << world_t_lidar.transpose() << "\nworld_R_lidar\n"
-                      << world_R_lidar << "\nworld_v_lidar:"
-                      << world_v_lidar.transpose() << std::endl;
-            return true;
-        } else {
-            std::cerr << "Cannot open file: " << init_lidar_pose_file << std::endl;
-            return false;
-        }
-    }
-    return false;
-}
-
-void add_pose_noise(V3D &pos, M3D &rot, double pos_noise, double rot_noise) {
-    V3D pos_noise_vec = pos_noise * V3D::Random();
-    pos += pos_noise_vec;
-    V3D rot_noise_vec = rot_noise * V3D::Random();
-    rot = rot * SO3::exp(rot_noise_vec).matrix();
-    std::cout << "Pose noise " << pos_noise << ", rot noise " << rot_noise << "\n";
-    std::cout << "Position noise " << pos_noise_vec.transpose()
-              << ", rot noise vec " << rot_noise_vec.transpose() << std::endl;
-}
-
-size_t load_tls_project_poses(const std::string &tls_project_dir, TlsPositionVector &TLS_positions) {
-    Eigen::Matrix<double, 5, 1> position_id;
-    string centerfile = tls_project_dir + "/centers.txt";
-    int projectid = 0;
-    if (tls_project_dir.find("project1") != string::npos) {
-        projectid = 1;
-    } else if (tls_project_dir.find("project2") != string::npos) {
-        projectid = 2;
-    } else {
-        cout << "TLS project id not found in the directory name" << endl;
-        return 0;
-    }
-    ifstream stream(centerfile.c_str());
-    if (!stream.is_open()) {
-        cout << centerfile << " doesn't exist" << endl;
-        return 0;
-    }
-    string line;
-    TLS_positions.reserve(TLS_positions.size() + 65);
-    while (getline(stream, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        stringstream ss(line);
-        int scanid;
-        ss >> scanid >> position_id[0] >> position_id[1] >> position_id[2];
-        position_id[3] = projectid;
-        position_id[4] = scanid;
-        TLS_positions.push_back(position_id);
-    }
-    std::cout << "TLS_positions, 0: " << TLS_positions.front().transpose()
-              << ", " << TLS_positions.size() - 1 << ": " << TLS_positions.back().transpose() << std::endl;
-    return TLS_positions.size();
-}
-
-ros::Time parseTimeStr(const std::string &time_str) {
-    if (time_str.empty()) {
-        return ros::Time(0);
-    }
-    if (time_str == "0") {
-        return ros::Time(0);
-    }
-    size_t pos = time_str.find('.');
-    int secs = std::stoi(time_str.substr(0, pos));
-    size_t nseclen = time_str.size() - pos - 1;
-    if (nseclen < 9) {
-        return ros::Time(secs, std::stoi(time_str.substr(pos + 1)) * std::pow(10, 9 - nseclen));
-    } else {
-        return ros::Time(secs, std::stoi(time_str.substr(pos + 1, 9)));
-    }
-}
-
 class LocToTlsCluster {
 private:
     ros::Time lastMsgTime;
@@ -994,6 +898,8 @@ private:
     DistCheckup dist_checkup;
     int nearest_scan_idx = -1; // scan idx within the tls_position_ids.
     std::string state_filename = "scan_states.txt";
+
+    LidarLocalizer lidar_localizer;
 
 public:
 int initializeSystem(ros::NodeHandle &nh) {
@@ -1145,7 +1051,8 @@ int initializeSystem(ros::NodeHandle &nh) {
         V3D init_w_t_lidar;
         M3D init_w_R_lidar;
         V3D init_w_v_lidar;
-        load_initial_lidar_pose(init_lidar_pose_file, init_w_t_lidar, init_w_R_lidar, init_w_v_lidar);
+        std::string timestr;
+        load_initial_lidar_pose(init_lidar_pose_file, init_w_t_lidar, init_w_R_lidar, init_w_v_lidar, timestr);
         add_pose_noise(init_w_t_lidar, init_w_R_lidar, init_pos_noise, init_rot_noise);
         init_world_R_imu = init_w_R_lidar * Lidar_R_wrt_IMU.transpose();
         init_world_t_imu_vec = init_w_t_lidar - init_world_R_imu * Lidar_T_wrt_IMU;
@@ -1168,6 +1075,11 @@ int initializeSystem(ros::NodeHandle &nh) {
         } else {
             ROS_WARN("No TLS reference trajectory files provided, TLS checkup disabled.");
         }
+    } else if (odom_mode == ODOM_MODE::LocWithOdom) {
+        lidar_localizer.initialize(init_lidar_pose_file, tls_dir, tls_ref_traj_files,
+                Lidar_R_wrt_IMU, Lidar_T_wrt_IMU,
+                filter_size_surf_min, filter_size_map_min, p_imu->G_m_s2,
+                state_log_dir);
     }
     cout << "odom_mode? " << OdomModeToString(odom_mode) << ", filter_size_map " << filter_size_map_min << std::endl;
     cout << "init_world_t_imu_vec: " << init_world_t_imu_vec[0] << " " << init_world_t_imu_vec[1] << " " << init_world_t_imu_vec[2] << endl;
@@ -1252,6 +1164,7 @@ int initializeSystem(ros::NodeHandle &nh) {
                     }
                     ikdtree.Build(feats_down_world->points);
                 }
+                lidar_localizer.push(feats_down_body, lidar_end_time, kf.get_x(), kf.get_P());
                 return false;
             }
             int featsFromMapNum = ikdtree.validnum();
@@ -1320,6 +1233,7 @@ int initializeSystem(ros::NodeHandle &nh) {
                 }
             } else {
                 map_incremental();
+                lidar_localizer.push(feats_down_body, lidar_end_time, kf.get_x(), kf.get_P());
             }
             t5 = omp_get_wtime();
 
