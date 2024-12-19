@@ -1038,10 +1038,10 @@ int initializeSystem(ros::NodeHandle &nh) {
             ROS_WARN("No TLS reference trajectory files provided, TLS checkup disabled.");
         }
     } else if (odom_mode == ODOM_MODE::LocWithOdom) {
+        lidar_localizer.initializeImu(Lidar_R_wrt_IMU, Lidar_T_wrt_IMU, gyr_cov, acc_cov, b_gyr_cov, b_acc_cov, p_imu->G_m_s2);
         lidar_localizer.initialize(init_lidar_pose_file, tls_dir, tls_ref_traj_files,
-                Lidar_R_wrt_IMU, Lidar_T_wrt_IMU,
-                filter_size_surf_min, filter_size_map_min, p_imu->G_m_s2, tls_dist_thresh,
-                state_log_dir);
+                                   Lidar_R_wrt_IMU, Lidar_T_wrt_IMU, p_imu->G_m_s2,
+                                   filter_size_surf_min, filter_size_map_min, tls_dist_thresh, state_log_dir);
         lidar_localizer.setPublishers(&pubMapPath, &pubMapFrame, &pubMapPose, &pubPriorMap);
     }
     cout << "odom_mode? " << OdomModeToString(odom_mode) << ", filter_size_map " << filter_size_map_min << std::endl;
@@ -1089,6 +1089,7 @@ int initializeSystem(ros::NodeHandle &nh) {
             t0 = omp_get_wtime();
 
             p_imu->Process(Measures, kf, feats_undistort);
+            lidar_localizer.propagateCov(Measures);
             state_point = kf.get_x();
             pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
 
@@ -1134,7 +1135,7 @@ int initializeSystem(ros::NodeHandle &nh) {
                 }
                 PointCloudXYZI::Ptr feats_down_body2(new PointCloudXYZI());
                 *feats_down_body2 = *feats_down_body;
-                lidar_localizer.push(feats_down_body2, lidar_end_time, state_point, kf.get_P());
+                lidar_localizer.push(feats_down_body2, lidar_end_time, state_point);
                 return false;
             }
             int featsFromMapNum = ikdtree.validnum();
@@ -1175,7 +1176,6 @@ int initializeSystem(ros::NodeHandle &nh) {
             /*** iterated state estimation ***/
             double t_update_start = omp_get_wtime();
             double solve_H_time = 0;
-            auto prev_cov = kf.get_P();
             kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
             state_point = kf.get_x();
             euler_cur = SO3ToEuler(state_point.rot);
@@ -1206,7 +1206,7 @@ int initializeSystem(ros::NodeHandle &nh) {
                 map_incremental();
                 PointCloudXYZI::Ptr feats_down_body2(new PointCloudXYZI());
                 *feats_down_body2 = *feats_down_body;
-                lidar_localizer.push(feats_down_body2, lidar_end_time, state_point, prev_cov);
+                lidar_localizer.push(feats_down_body2, lidar_end_time, state_point);
             }
             t5 = omp_get_wtime();
 

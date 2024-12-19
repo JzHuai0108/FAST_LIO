@@ -313,6 +313,7 @@ LidarLocalizer::LidarLocalizer():
     initialized_(false), path_publisher(nullptr),
     frame_map_publisher(nullptr),
     pose_publisher(nullptr) {
+    p_imu.reset(new ImuProcess());
     localizer_ptr = this;
 }
 
@@ -325,10 +326,21 @@ LidarLocalizer::~LidarLocalizer() {
     pose_publisher = nullptr;
 }
 
+void LidarLocalizer::initializeImu(
+    const M3D &Lidar_R_wrt_IMU, const V3D &Lidar_T_wrt_IMU,
+    double gyr_cov, double acc_cov, double b_gyr_cov, double b_acc_cov, double G_m_s2) {
+    p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
+    p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
+    p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
+    p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
+    p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+    p_imu->G_m_s2 = G_m_s2;
+}
+
 void LidarLocalizer::initialize(const std::string &init_lidar_pose_file,
         const std::string &tls_dir, const std::string &tls_ref_traj_files,
-        const M3D &Lidar_R_wrt_IMU, const V3D &Lidar_T_wrt_IMU,
-        double filter_size_surf, double filter_size_map, double G_m_s2, double tls_dist_thresh,
+        const M3D &Lidar_R_wrt_IMU, const V3D &Lidar_T_wrt_IMU, const double G_m_s2,
+        double filter_size_surf, double filter_size_map, double tls_dist_thresh,
         const std::string &logdir) {
     logdir_ = logdir;
     statefile_ = joinPath(logdir_, "loc_states.txt");
@@ -399,28 +411,18 @@ void LidarLocalizer::initialize(const std::string &init_lidar_pose_file,
                      << init_state.grav.get_vect().transpose() << " at " << timestr);
     kf_.change_x(init_state);
     statestamp_ = parseTimeStr(timestr);
-
-    // initialize cov
-    esekfom::esekf<state_ikfom, 12, input_ikfom>::cov init_P = kf_.get_P();
-    init_P.setIdentity();
-    init_P(6,6) = init_P(7,7) = init_P(8,8) = 0.00001;
-    init_P(9,9) = init_P(10,10) = init_P(11,11) = 0.00001;
-    init_P(15,15) = init_P(16,16) = init_P(17,17) = 0.0001;
-    init_P(18,18) = init_P(19,19) = init_P(20,20) = 0.001;
-    init_P(21,21) = init_P(22,22) = 0.00001; 
-    kf_.change_P(init_P);
+    p_imu->first_lidar_time = statestamp_.toSec();
 
     initialized_ = true;
 }
 
 void LidarLocalizer::push(PointCloudXYZI::ConstPtr unskewed_scan, const double stamp,
-    const state_ikfom &state, 
-    const esekfom::esekf<state_ikfom, 12, input_ikfom>::cov &cov) {
+    const state_ikfom &state) {
     if (!initialized_)
         return;
     ros::Time tstamp;
     tstamp.fromSec(stamp);
-    bool ready = propagate(tstamp, state, cov, unskewed_scan);
+    bool ready = propagate(tstamp, state, unskewed_scan);
 
     loadCloseTlsScans(kf_.get_x());
 
@@ -436,9 +438,19 @@ void LidarLocalizer::push(PointCloudXYZI::ConstPtr unskewed_scan, const double s
     saveState();
 }
 
+void LidarLocalizer::propagateCov(const MeasureGroup &measurements) {
+    PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
+    bool init_status_bef = p_imu->needInit();
+    auto state = kf_.get_x();
+    p_imu->Process(measurements, kf_, feats_undistort);
+    bool init_status_aft = p_imu->needInit();
+    if (init_status_bef) { // restore our initial kf state when the IMU is to be initialized, and we will keep the initial cov from the IMU.
+        kf_.change_x(state);
+    }
+}
+
 bool LidarLocalizer::propagate(const ros::Time &stamp,
     const state_ikfom &odom_state,
-    const esekfom::esekf<state_ikfom, 12, input_ikfom>::cov &cov,
     PointCloudXYZI::ConstPtr unskewed_scan) {
     auto map_state = kf_.get_x();
 
@@ -481,8 +493,7 @@ bool LidarLocalizer::propagate(const ros::Time &stamp,
 
     kf_.change_x(map_state);
     statestamp_ = stamp;
-    // update the kf cov to that of the odom
-    kf_.change_P(cov);
+
     const auto &state_point = kf_.get_x();
     pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
 

@@ -11,6 +11,7 @@
 #include "common_lib.h"
 #include "dist_checkup.h"
 #include "use-ikfom.hpp"
+#include "IMU_Processing.hpp"
 #include <ikd-Tree/ikd_Tree.h>
 
 #include <pcl_conversions/pcl_conversions.h>
@@ -68,10 +69,14 @@ public:
 
     virtual ~LidarLocalizer();
 
+    void initializeImu(
+        const M3D &Lidar_R_wrt_IMU, const V3D &Lidar_T_wrt_IMU,
+        double gyr_cov, double acc_cov, double b_gyr_cov, double b_acc_cov, double G_m_s2);
+
     void initialize(const std::string &init_lidar_pose_file,
         const std::string &tls_dir, const std::string &tls_ref_traj_files,
-        const M3D &Lidar_R_wrt_IMU, const V3D &Lidar_T_wrt_IMU,
-        double filter_size_surf, double filter_size_map, double G_m_s2, double tls_dist_thresh,
+        const M3D &Lidar_R_wrt_IMU, const V3D &Lidar_T_wrt_IMU, double G_m_s2,
+        double filter_size_surf, double filter_size_map, double tls_dist_thresh,
         const std::string &logdir);
 
     void setPublishers(ros::Publisher *path, ros::Publisher *frame_map, ros::Publisher *pose, ros::Publisher *map) {
@@ -81,8 +86,9 @@ public:
         map_publisher = map;
     }
 
-    void push(PointCloudXYZI::ConstPtr unskewed_scan, const double stamp, const state_ikfom &state, 
-        const esekfom::esekf<state_ikfom, 12, input_ikfom>::cov &cov);
+    void propagateCov(const MeasureGroup &measurements);
+
+    void push(PointCloudXYZI::ConstPtr unskewed_scan, const double stamp, const state_ikfom &state);
 
     void publish_path(double lidar_end_time);
     void publish_map_frame(double lidar_end_time);
@@ -96,7 +102,6 @@ private:
 
     bool propagate(const ros::Time &stamp,
                    const state_ikfom &state,
-                   const esekfom::esekf<state_ikfom, 12, input_ikfom>::cov &cov,
                    PointCloudXYZI::ConstPtr unskewed_scan);
 
     void assembleScan(PointCloudXYZI::Ptr accum_scan);
@@ -142,10 +147,13 @@ private:
     ros::Publisher *frame_map_publisher;
     ros::Publisher *pose_publisher;
     ros::Publisher *map_publisher;
+
     Eigen::Affine3d M_T_O_;
     Eigen::Affine3d O_T_I_kf_;
     Eigen::Affine3d M_T_I_kf_;
     bool should_swap_kf_ = false;
+
+    std::shared_ptr<ImuProcess> p_imu; // for covariance propagation. The off diagonal terms in the covariance matrix is critical for full state observability.
 
 public:
     BoxPointType LocalMap_Points;
