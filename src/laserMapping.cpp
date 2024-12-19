@@ -196,7 +196,7 @@ void pointBodyToWorld(PointType const * const pi, PointType * const po)
 }
 
 template<typename T>
-void pointBodyToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po)
+void pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po)
 {
     V3D p_lidar(pi[0], pi[1], pi[2]);
     V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_lidar + state_point.offset_T_L_I) + state_point.pos);
@@ -477,58 +477,9 @@ void map_incremental()
     kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
-int load_close_tls_scans(const TlsPositionVector &TLS_positions, int prev_nearest_scan_idx) {
-    // find the nearest position in the TLS map
-    int nearest_index = -1;
-    double min_distance = std::numeric_limits<double>::max();
-    for (int i = 0; i < TLS_positions.size(); i++)
-    {
-        V3D dist_vec = state_point.pos - TLS_positions[i].head(3);
-        dist_vec.z() = 0;
-        double distance = dist_vec.norm();
-        if (distance < min_distance)
-        {
-            min_distance = distance;
-            nearest_index = i;
-        }
-    }
-
-    if (nearest_index == prev_nearest_scan_idx) { // already loaded, no need to load again.
-        return nearest_index;
-    }
-
-    std::string map_filename;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr TCL_submap(new pcl::PointCloud<pcl::PointXYZ>());
-
-    size_t count = 0;
-    int target_project_id = int(TLS_positions[nearest_index][3]);
-    std::vector<int> loadedscans;
-    loadedscans.reserve(3);
-    for (int i = nearest_index - 1; i <= nearest_index + 1; i++){
-        if (i < 0 || i >= TLS_positions.size()){
-            continue;
-        }
-        int projectid = int(TLS_positions[i][3]);
-        if (projectid != target_project_id)
-            continue;
-        int scanid = int(TLS_positions[i][4]);
-        if (projectid == 1) {
-            map_filename = tls_dir + "/project1/regis/" + std::to_string(scanid) + ".pcd";
-        } else if (projectid == 2) {
-            map_filename = tls_dir + "/project2/regis/" + std::to_string(scanid) + "_uniform.pcd";
-        }
-        loadedscans.push_back(scanid);
-        pcl::PointCloud<pcl::PointXYZ>::Ptr map(new pcl::PointCloud<pcl::PointXYZ>());
-        pcl::io::loadPCDFile<pcl::PointXYZ>(map_filename, *map);
-        *TCL_submap += *map;
-        count++;
-    }
-    std::cout << "Loaded " << loadedscans.size() << " new scans: ";
-    for (size_t j = 0; j < loadedscans.size(); ++j) {
-        std::cout << j << ":" << loadedscans[j] << " ";
-    }
-
-    downSizeFilterMap.setInputCloud(TCL_submap);
+void updateKdTree(pcl::PointCloud<pcl::PointXYZ>::Ptr TLS_submap, const TlsPositionVector &TLS_positions,
+                  int prev_nearest_scan_idx, int nearest_index) {
+    downSizeFilterMap.setInputCloud(TLS_submap);
     pcl::PointCloud<pcl::PointXYZ>::Ptr map_ds(new pcl::PointCloud<pcl::PointXYZ>());
     downSizeFilterMap.filter(*map_ds);
     PointVector PointToAdd;
@@ -543,15 +494,14 @@ int load_close_tls_scans(const TlsPositionVector &TLS_positions, int prev_neares
     ikdtree.Build(PointToAdd);
     if (prev_nearest_scan_idx >= 0) {
         ROS_INFO(("New nearest id %d, project id %d, old nearest id %d, project id %d, "
-             "loaded %zu frames, %zu points downsampled from %zu."), 
+             "%zu points downsampled from %zu."),
             nearest_index, (int)TLS_positions[nearest_index][3], prev_nearest_scan_idx, 
-            (int)TLS_positions[prev_nearest_scan_idx][3], count, PointToAdd.size(), TCL_submap->points.size());
+            (int)TLS_positions[prev_nearest_scan_idx][3], PointToAdd.size(), TLS_submap->points.size());
     } else {
         ROS_INFO(("New nearest id %d, project id %d, "
-             "loaded %zu frames, %zu points downsampled from %zu."), 
-            nearest_index, (int)TLS_positions[nearest_index][3], count, PointToAdd.size(), TCL_submap->points.size());
+             "%zu points downsampled from %zu."),
+            nearest_index, (int)TLS_positions[nearest_index][3], PointToAdd.size(), TLS_submap->points.size());
     }
-    return nearest_index;
 }
 
 PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI(500000, 1));
@@ -871,7 +821,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     solve_time += omp_get_wtime() - solve_start_;
 }
 
-class LocToTlsCluster {
+class LIOdometer {
 private:
     ros::Time lastMsgTime;
     TlsPositionVector tls_position_ids;
@@ -886,6 +836,11 @@ private:
     ros::Publisher pubLaserCloudMap;
     ros::Publisher pubOdomAftMapped;
     ros::Publisher pubPath;
+
+    ros::Publisher pubMapPath;
+    ros::Publisher pubMapFrame;
+    ros::Publisher pubMapPose;
+    ros::Publisher pubPriorMap;
 
     int frame_num = 0;
     double aver_time_consu = 0, aver_time_icp = 0, aver_time_match = 0, aver_time_incre = 0, aver_time_solve = 0, aver_time_const_H_time = 0;
@@ -1043,6 +998,11 @@ int initializeSystem(ros::NodeHandle &nh) {
             ("/Odometry", 100000);
     pubPath          = nh.advertise<nav_msgs::Path> 
             ("/path", 100000);
+
+    pubMapPath = nh.advertise<nav_msgs::Path>("/map_path", 100);
+    pubMapFrame = nh.advertise<sensor_msgs::PointCloud2>("/map_cloud", 10);
+    pubMapPose = nh.advertise<nav_msgs::Odometry>("/map_pose", 10);
+    pubPriorMap = nh.advertise<sensor_msgs::PointCloud2>("/prior_map", 10);
 //------------------------------------------------------------------------------------------------------
     signal(SIGINT, SigHandle);
     lastMsgTime = ros::Time::now();
@@ -1080,8 +1040,9 @@ int initializeSystem(ros::NodeHandle &nh) {
     } else if (odom_mode == ODOM_MODE::LocWithOdom) {
         lidar_localizer.initialize(init_lidar_pose_file, tls_dir, tls_ref_traj_files,
                 Lidar_R_wrt_IMU, Lidar_T_wrt_IMU,
-                filter_size_surf_min, filter_size_map_min, p_imu->G_m_s2,
+                filter_size_surf_min, filter_size_map_min, p_imu->G_m_s2, tls_dist_thresh,
                 state_log_dir);
+        lidar_localizer.setPublishers(&pubMapPath, &pubMapFrame, &pubMapPose, &pubPriorMap);
     }
     cout << "odom_mode? " << OdomModeToString(odom_mode) << ", filter_size_map " << filter_size_map_min << std::endl;
     cout << "init_world_t_imu_vec: " << init_world_t_imu_vec[0] << " " << init_world_t_imu_vec[1] << " " << init_world_t_imu_vec[2] << endl;
@@ -1133,7 +1094,7 @@ int initializeSystem(ros::NodeHandle &nh) {
 
             if (feats_undistort->empty() || (feats_undistort == NULL))
             {
-                ROS_WARN("No point, skip this scan!");
+                ROS_WARN("No point, skip this undistorted scan!");
                 return false;
             }
 
@@ -1149,7 +1110,12 @@ int initializeSystem(ros::NodeHandle &nh) {
             feats_down_size = feats_down_body->points.size();
             if (odom_mode == ODOM_MODE::LocToMap) {
                 ikdtree.set_downsample_param(filter_size_map_min);
-                nearest_scan_idx = load_close_tls_scans(tls_position_ids, nearest_scan_idx);
+                pcl::PointCloud<pcl::PointXYZ>::Ptr TLS_submap(new pcl::PointCloud<pcl::PointXYZ>());
+                int prev_nearest_idx = nearest_scan_idx;
+                nearest_scan_idx = load_close_tls_scans(tls_position_ids, state_point.pos, tls_dir, TLS_submap, nearest_scan_idx);
+                if (TLS_submap->size()) {
+                    updateKdTree(TLS_submap, tls_position_ids, prev_nearest_idx, nearest_scan_idx);
+                }
             }
             /*** initialize the map kdtree ***/
             if(ikdtree.Root_Node == nullptr)
@@ -1166,7 +1132,9 @@ int initializeSystem(ros::NodeHandle &nh) {
                     }
                     ikdtree.Build(feats_down_world->points);
                 }
-                lidar_localizer.push(feats_down_body, lidar_end_time, kf.get_x(), kf.get_P());
+                PointCloudXYZI::Ptr feats_down_body2(new PointCloudXYZI());
+                *feats_down_body2 = *feats_down_body;
+                lidar_localizer.push(feats_down_body2, lidar_end_time, state_point, kf.get_P());
                 return false;
             }
             int featsFromMapNum = ikdtree.validnum();
@@ -1177,7 +1145,7 @@ int initializeSystem(ros::NodeHandle &nh) {
             /*** ICP and iterated Kalman filter update ***/
             if (feats_down_size < 5)
             {
-                ROS_WARN("No point, skip this scan!");
+                ROS_WARN("No point, skip this downsampled scan!");
                 return false;
             }
             
@@ -1207,6 +1175,7 @@ int initializeSystem(ros::NodeHandle &nh) {
             /*** iterated state estimation ***/
             double t_update_start = omp_get_wtime();
             double solve_H_time = 0;
+            auto prev_cov = kf.get_P();
             kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
             state_point = kf.get_x();
             euler_cur = SO3ToEuler(state_point.rot);
@@ -1235,7 +1204,9 @@ int initializeSystem(ros::NodeHandle &nh) {
                 }
             } else {
                 map_incremental();
-                lidar_localizer.push(feats_down_body, lidar_end_time, kf.get_x(), kf.get_P());
+                PointCloudXYZI::Ptr feats_down_body2(new PointCloudXYZI());
+                *feats_down_body2 = *feats_down_body;
+                lidar_localizer.push(feats_down_body2, lidar_end_time, state_point, prev_cov);
             }
             t5 = omp_get_wtime();
 
@@ -1325,8 +1296,8 @@ int main(int argc, char** argv) {
     ros::init(argc, argv, "laserMapping");
     ros::NodeHandle nh;
 
-    LocToTlsCluster localizer;
-    int res = localizer.initializeSystem(nh);
+    LIOdometer odometer;
+    int res = odometer.initializeSystem(nh);
     if (!res) return 0;
     bool abort = false;
     ros::Rate rate(500);
@@ -1358,7 +1329,7 @@ int main(int argc, char** argv) {
                 continue;
             }
             lidar_publisher.publish(lidar_msg);
-            abort = localizer.spinOnce();
+            abort = odometer.spinOnce();
         } else if (m.getTopic() == imu_topic) {
             sensor_msgs::Imu::ConstPtr imu_msg = m.instantiate<sensor_msgs::Imu>();
             if (imu_msg->header.stamp < min_time_ros) {
@@ -1369,7 +1340,7 @@ int main(int argc, char** argv) {
         if (abort) break;
     }
     bag.close();
-    localizer.saveMap();
+    odometer.saveMap();
     ROS_INFO("Finished processing bag file %s", bagfile.c_str());
     return 0;
 }

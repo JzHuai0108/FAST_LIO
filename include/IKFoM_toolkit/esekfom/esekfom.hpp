@@ -1930,7 +1930,7 @@ public:
 		}
 	}
 
-	void change_x(state &input_state)
+    void change_x(const state &input_state)
 	{
 		x_ = input_state;
 		if((!x_.vect_state.size())&&(!x_.SO3_state.size())&&(!x_.S2_state.size()))
@@ -1941,7 +1941,7 @@ public:
 		}
 	}
 
-	void change_P(cov &input_cov)
+    void change_P(const cov &input_cov)
 	{
 		P_ = input_cov;
 	}

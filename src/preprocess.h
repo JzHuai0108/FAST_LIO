@@ -84,13 +84,13 @@ namespace livox_ros {
 }  // namespace livox_ros
 
 POINT_CLOUD_REGISTER_POINT_STRUCT(livox_ros::Point,
-    (float, x, x)
-    (float, y, y)
-    (float, z, z)
-    (float, intensity, intensity)
-    (uint8_t, tag, tag)
-    (uint8_t, line, line)
-    (double, timestamp, timestamp)
+                                  (float, x, x)
+                                  (float, y, y)
+                                  (float, z, z)
+                                  (float, intensity, intensity)
+                                  (std::uint8_t, tag, tag)
+                                  (std::uint8_t, line, line)
+                                  (double, timestamp, timestamp)
 )
 
 namespace ouster_ros {
