@@ -1,4 +1,5 @@
 #include "lidar_localizer.h"
+#include "pcl_utils.h"
 
 #include <sstream>
 #include <boost/algorithm/string.hpp>
@@ -313,7 +314,10 @@ LidarLocalizer::LidarLocalizer():
     initialized_(false), path_publisher(nullptr),
     frame_map_publisher(nullptr),
     pose_publisher(nullptr) {
+    accum_window_ = 5;
     p_imu.reset(new ImuProcess());
+    tls_submap_.reset(new pcl::PointCloud<pcl::PointXYZ>());
+    num_gicp_iter_ = 10;
     localizer_ptr = this;
 }
 
@@ -363,7 +367,7 @@ void LidarLocalizer::initialize(const std::string &init_lidar_pose_file,
     V3D init_w_v_lidar;
     std::string timestr;
     load_initial_lidar_pose(init_lidar_pose_file, init_w_t_lidar, init_w_R_lidar, init_w_v_lidar, timestr);
-
+//    add_pose_noise(init_w_t_lidar, init_w_R_lidar, 0.2, 0.1);
     V3D init_world_t_imu_vec(Zero3d);
     M3D init_world_R_imu(Eye3d);
     V3D init_world_v_imu_vec(Zero3d);
@@ -430,7 +434,13 @@ void LidarLocalizer::push(PointCloudXYZI::ConstPtr unskewed_scan, const double s
     if (ready && inbound_) {
         PointCloudXYZI::Ptr accum_scan(new PointCloudXYZI());
         assembleScan(accum_scan);
-        updateState(accum_scan, stamp);
+        if (odom_states_.size() == 1) {
+            // Using GICP to refine the first pose is needed because 
+            // IEKF-based LIO's rotation is unobservable at the stationary start. 
+            refinePoseByGICP(accum_scan, stamp);
+        } else {
+            updateState(accum_scan, stamp);
+        }
     }
 
     publish(stamp);
@@ -558,6 +568,38 @@ void LidarLocalizer::loadCloseTlsScans(const state_ikfom &state) {
     if (TLS_submap->size()) {
         updateKdTree(TLS_submap, tls_position_ids_, prev_nearest_idx, nearest_scan_idx);
     }
+}
+
+
+void LidarLocalizer::refinePoseByGICP(PointCloudXYZI::Ptr feats_undistort, double lidar_end_time) {
+    // predict the lidar pose in the TLS world frame with the relative motion.
+    const auto & state = kf_.get_x();
+    Eigen::Affine3d I_T_L = Eigen::Translation3d(state.offset_T_L_I) * state.offset_R_L_I;
+    Eigen::Affine3d M_T_I = Eigen::Translation3d(state.pos) * state.rot;
+    Eigen::Affine3d M_T_L = M_T_I * I_T_L;
+    Eigen::Matrix4d pred_tls_T_lidar = M_T_L.matrix();
+    Eigen::Matrix4f tls_T_lidar = pred_tls_T_lidar.cast<float>();
+    pcl::PointCloud<pcl::PointXYZ>::Ptr feats_down_lidar(new pcl::PointCloud<pcl::PointXYZ>()); // downsampled point cloud in lidar frame.
+    pointXyziToPointXyz(feats_undistort, feats_down_lidar);
+    auto starttime = std::chrono::high_resolution_clock::now();
+    double meansquaredist;
+    size_t nummatches;
+    bool converged;
+    locToTlsByGicp(feats_down_lidar, tls_submap_, tls_T_lidar, num_gicp_iter_, meansquaredist, nummatches, converged);
+    ROS_INFO_STREAM("GICP init pose:\n" << pred_tls_T_lidar << "\nRefined pose:\n" << tls_T_lidar);
+    ROS_INFO("GICP converged: %d, nummatches: %lu, meansquaredist: %.3f", converged, nummatches, meansquaredist);
+    auto endtime = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endtime - starttime);
+    ROS_INFO("GICP time: %.3f ms", duration.count() / 1000.0);
+
+    // update kf state
+    auto map_state = kf_.get_x();
+    Eigen::Affine3d M_T_L_g(tls_T_lidar.cast<double>());
+    Eigen::Affine3d M_T_I_g = M_T_L_g * I_T_L.inverse();
+    O_T_I_kf_ = Eigen::Translation3d(odom_states_.back().pos) * odom_states_.back().rot;
+    M_T_I_kf_ = M_T_I_g;
+    M_T_O_ = M_T_I_kf_ * O_T_I_kf_.inverse();
+    kf_.change_x(map_state);
 }
 
 void LidarLocalizer::updateState(PointCloudXYZI::Ptr feats_undistort, double lidar_end_time) {
@@ -710,6 +752,7 @@ void LidarLocalizer::updateKdTree(pcl::PointCloud<pcl::PointXYZ>::Ptr TLS_submap
                   "%zu points downsampled from %zu."),
                  nearest_index, (int)TLS_positions[nearest_index][3], PointToAdd.size(), TLS_submap->points.size());
     }
+    *tls_submap_ = *map_ds;
 }
 
 

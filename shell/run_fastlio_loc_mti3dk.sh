@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# warn: Deprecated
 
 ws_dir="/media/$USER/docker/lidarslam/fastlio_slam_ws_rel"
 ws_dir="/home/$USER/Documents/lidar/fastlioslam_ws"
@@ -55,7 +55,7 @@ for i in "${!bagnames[@]}"; do
   roslaunch fast_lio loc_hesai32_handheld.launch \
       configyaml:=$configyamlname \
       bagfile:=$bagfile tls_ref_traj_files:="$ref_traj_file1;$ref_traj_file2;$ref_traj_file3;$ref_traj_file4" \
-      tls_dir:=$tls_dir odom_mode:=1 \
+      tls_dir:=$tls_dir odom_mode:=2 \
       init_lidar_pose_file:=$init_pose_file \
       save_dir:=$save_dir 2>&1 | tee $save_dir/fastlio.log
   count=$((count+1))
@@ -144,7 +144,7 @@ bagnames=(
 timeoffsets=(0)
 # lidarslam front "${bagnames[@]}"
 
-datadir="/media/pi/My_Book/jhuai/data/zip"
+datadir="/media/$USER/My_Book/jhuai/data/zip"
 tls_dist_thresh=100
 loc_check_bags=(
   20231105/data6
@@ -156,7 +156,7 @@ lidarslam back "${loc_check_bags[@]}"
 lidarslam front "${loc_check_bags[@]}"
 
 
-datadir="/media/pi/My_Book/jhuai/data/zip"
+datadir="/media/$USER/My_Book/jhuai/data/zip"
 bags202401=(
   20240113/data1)
 timeoffsets=(0)

@@ -108,6 +108,8 @@ private:
 
     void loadCloseTlsScans(const state_ikfom &state);
 
+    void refinePoseByGICP(PointCloudXYZI::Ptr accum_scan, const double stamp);
+
     void updateState(PointCloudXYZI::Ptr accum_scan, const double stamp);
 
     void saveState() const;
@@ -126,8 +128,7 @@ private:
     std::deque<PointCloudXYZI::ConstPtr> scans_; // downsampled unskewed lidar points in lidar frame at end frame time
     std::deque<state_ikfom> odom_states_; // states from the odometry, states and scans have the same length
     std::deque<ros::Time> odom_stamps_; // lidar frame end times.
-    size_t accum_window_ = 5;
-
+    size_t accum_window_;
 
     esekfom::esekf<state_ikfom, 12, input_ikfom> kf_;
     ros::Time statestamp_;
@@ -154,6 +155,8 @@ private:
     bool should_swap_kf_ = false;
 
     std::shared_ptr<ImuProcess> p_imu; // for covariance propagation. The off diagonal terms in the covariance matrix is critical for full state observability.
+    pcl::PointCloud<pcl::PointXYZ>::Ptr tls_submap_;
+    int num_gicp_iter_;
 
 public:
     BoxPointType LocalMap_Points;
