@@ -99,7 +99,7 @@ def save_init_state(pose, vel, t, init_pose_file):
         f.write('{} {} {}\n'.format(vel[0], vel[1], vel[2]))
         f.write('{}.{:09d}\n'.format(t.secs, t.nsecs))
 
-def read_forward_result(forwardtxt, queryt):
+def read_forward_result(forwardtxt, queryt, delim=','):
     """
     Read the forward result file and find the closest time to the query time.
     
@@ -113,7 +113,7 @@ def read_forward_result(forwardtxt, queryt):
         for l in f:
             if l.startswith('#') or l.strip() == '':
                 continue
-            parts = l.strip().split()
+            parts = l.strip().split(delim)
             t = parse_time(parts[0])
             times.append(t)
             lines.append(parts[1:])
@@ -121,7 +121,7 @@ def read_forward_result(forwardtxt, queryt):
     time_diffs = [abs((t - queryt).to_sec()) for t in times]
     idx = np.argmin(time_diffs)
     if time_diffs[idx] > 0.1:
-        print(f'Error: Could not find the closest time to {queryt.secs}.{queryt.nsecs:09d} in {forwardtxt}.')
+        print(f'Warn: Could not find the closest time to {queryt.secs}.{queryt.nsecs:09d} in {forwardtxt}.')
         print(f'The closest time is {times[idx].secs}.{times[idx].nsecs:09d} with gap {time_diffs[idx]} secs.')
     return lines[idx][:7], lines[idx][7:10]
 
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     parser.add_argument("bagdir", type=str, help="Directory containing rosbags of corrected timestamps")
     parser.add_argument("tls_dir", type=str, help="Directory containing tls data")
     parser.add_argument("outputdir", type=str, help="Output directory")
-    parser.add_argument("--tls_dist_thresh", type=float, default=100, help="Threshold on distance to TLS trajectory to abort LIO localization")
+    parser.add_argument("--tls_dist_thresh", type=float, default=8.0, help="Threshold on distance to TLS trajectory to abort LIO localization")
     args = parser.parse_args()
 
     reftraj_files = []

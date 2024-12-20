@@ -345,9 +345,8 @@ void LidarLocalizer::initialize(const std::string &init_lidar_pose_file,
         const std::string &tls_dir, const std::string &tls_ref_traj_files,
         const M3D &Lidar_R_wrt_IMU, const V3D &Lidar_T_wrt_IMU, const double G_m_s2,
         double filter_size_surf, double filter_size_map, double tls_dist_thresh,
-        const std::string &logdir) {
-    logdir_ = logdir;
-    statefile_ = joinPath(logdir_, "loc_states.txt");
+        const std::string &statefile) {
+    statefile_ = statefile;
     statestream_.open(statefile_, std::fstream::out);
     std::string header = "#time(sec),M_p_L_x,M_p_L_y,M_p_L_z,M_q_L_x,M_q_L_y,M_q_L_z,M_q_L_w";
     header += ",M_v_L_x,M_v_L_y,M_v_L_z,bg_x,bg_y,bg_z,ba_x,ba_y,ba_z,M_G_x,M_G_y,M_G_z";
@@ -444,11 +443,13 @@ void LidarLocalizer::push(PointCloudXYZI::ConstPtr unskewed_scan, const double s
     }
 
     publish(stamp);
-
-    saveState();
+    if (inbound_)
+        saveState();
 }
 
 void LidarLocalizer::propagateCov(const MeasureGroup &measurements) {
+    if (!initialized_)
+        return;
     PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
     bool init_status_bef = p_imu->needInit();
     auto state = kf_.get_x();
@@ -493,6 +494,8 @@ bool LidarLocalizer::propagate(const ros::Time &stamp,
         double dd =Ip_T_I.translation().norm();
         double da = std::fabs(Eigen::AngleAxisd(Ip_T_I.rotation()).angle());
         if ( dd > 0.5 || da > M_PI / 18.0) {
+            // We propagate localizer pose by applying odometer's relative motion to keyframes.
+            // This seems to prevent the significant drift from using odometer's pairwise relative motion.
             should_swap_kf_ = true;
         }
     }
@@ -501,7 +504,9 @@ bool LidarLocalizer::propagate(const ros::Time &stamp,
     map_state.ba = odom_state.ba;
     map_state.grav = M_T_O_.rotation() * odom_state.grav;
 
-    kf_.change_x(map_state);
+    // if the frontend odometer may drift badly at some points,
+    // then it is better to have the localizer maintain itself by commenting change_x out.
+    // kf_.change_x(map_state);
     statestamp_ = stamp;
 
     const auto &state_point = kf_.get_x();

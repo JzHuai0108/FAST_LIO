@@ -967,7 +967,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS, epsi);
 
     /*** debug record ***/
-    string pos_log_filename = state_log_dir + "/" + state_filename;
+    string pos_log_filename = state_log_dir + "/" + state_filename.substr(0, state_filename.size() - 4) + "_odom.txt";
     fp = fopen(pos_log_filename.c_str(),"w");
     if (fp == NULL) {
         std::cout << "Failed to create state file " << pos_log_filename << "." << std::endl;
@@ -1039,10 +1039,12 @@ int initializeSystem(ros::NodeHandle &nh) {
         }
     } else if (odom_mode == ODOM_MODE::LocWithOdom) {
         lidar_localizer.initializeImu(Lidar_R_wrt_IMU, Lidar_T_wrt_IMU, gyr_cov, acc_cov, b_gyr_cov, b_acc_cov, p_imu->G_m_s2);
+        std::string loc_state_file = state_log_dir + "/" + state_filename;
         lidar_localizer.initialize(init_lidar_pose_file, tls_dir, tls_ref_traj_files,
                                    Lidar_R_wrt_IMU, Lidar_T_wrt_IMU, p_imu->G_m_s2,
-                                   filter_size_surf_min, filter_size_map_min, tls_dist_thresh, state_log_dir);
-        lidar_localizer.setPublishers(&pubMapPath, &pubMapFrame, &pubMapPose, &pubPriorMap);
+                                   filter_size_surf_min, filter_size_map_min, tls_dist_thresh, loc_state_file);
+        // lidar_localizer.setPublishers(&pubMapPath, &pubMapFrame, &pubMapPose, &pubPriorMap);
+        lidar_localizer.setPublishers(&pubMapPath, &pubMapFrame, &pubMapPose, nullptr); // disable prior map publishing for efficiency.
     }
     cout << "odom_mode? " << OdomModeToString(odom_mode) << ", filter_size_map " << filter_size_map_min << std::endl;
     cout << "init_world_t_imu_vec: " << init_world_t_imu_vec[0] << " " << init_world_t_imu_vec[1] << " " << init_world_t_imu_vec[2] << endl;
@@ -1207,6 +1209,9 @@ int initializeSystem(ros::NodeHandle &nh) {
                 PointCloudXYZI::Ptr feats_down_body2(new PointCloudXYZI());
                 *feats_down_body2 = *feats_down_body;
                 lidar_localizer.push(feats_down_body2, lidar_end_time, state_point);
+                if (lidar_localizer.shouldAbort()) {
+                    return true;
+                }
             }
             t5 = omp_get_wtime();
 

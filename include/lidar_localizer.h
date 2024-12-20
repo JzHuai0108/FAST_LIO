@@ -77,7 +77,7 @@ public:
         const std::string &tls_dir, const std::string &tls_ref_traj_files,
         const M3D &Lidar_R_wrt_IMU, const V3D &Lidar_T_wrt_IMU, double G_m_s2,
         double filter_size_surf, double filter_size_map, double tls_dist_thresh,
-        const std::string &logdir);
+        const std::string &statefilename);
 
     void setPublishers(ros::Publisher *path, ros::Publisher *frame_map, ros::Publisher *pose, ros::Publisher *map) {
         path_publisher = path;
@@ -89,6 +89,8 @@ public:
     void propagateCov(const MeasureGroup &measurements);
 
     void push(PointCloudXYZI::ConstPtr unskewed_scan, const double stamp, const state_ikfom &state);
+
+    bool shouldAbort() const { return !inbound_; }
 
     void publish_path(double lidar_end_time);
     void publish_map_frame(double lidar_end_time);
@@ -121,7 +123,6 @@ private:
 
 private:
     bool initialized_;
-    std::string logdir_;
     std::string statefile_;
     mutable std::ofstream statestream_;
 
