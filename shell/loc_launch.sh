@@ -19,6 +19,9 @@ echo "bag_start_time: $bag_start_time"
 echo "tls_dist_thresh: $tls_dist_thresh"
 echo "state_filename: $state_filename"
 echo "save_dir: $save_dir"
+echo "loc_follow_odom: $loc_follow_odom"
+echo "loc_accum_window: $loc_accum_window"
+
 
 # The following 3 trajs are covered by and cover the TLS map.
 ref_traj_file1="$fastlio_dir/data/20231105_aft/data2/scan_states.txt" # the basketball court loop
@@ -42,7 +45,7 @@ cmd="roslaunch fast_lio loc_hesai32_handheld.launch \
     init_lidar_pose_file:=$init_pose_file \
     bag_start_time:=$bag_start_time \
     state_filename:=$state_filename \
-    save_dir:=$save_dir"
+    save_dir:=$save_dir loc_accum_window:=$loc_accum_window loc_follow_odom:=$loc_follow_odom"
 
 echo "$cmd"
 $cmd 2>&1 | tee $save_dir/$logname

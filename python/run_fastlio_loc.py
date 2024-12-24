@@ -136,24 +136,28 @@ if __name__ == "__main__":
     parser.add_argument("--tls_dist_thresh", type=float, default=8.0, help="Threshold on distance to TLS trajectory to abort LIO localization")
     args = parser.parse_args()
 
-    reftraj_files = []
-    for root, dirs, files in os.walk(args.reftraj_dir):
-        for file in files:
-            if file.endswith('tls_T_xt32.txt'):
-                reftraj_files.append(os.path.join(root, file))
-    print(f'Found {len(reftraj_files)} reference trajectory files')
+    baglist = []
+    if args.bagdir.endswith('.bag'):
+        baglist = [args.bagdir]
+    else:
+        for root, dirs, files in os.walk(args.bagdir):
+            for file in files:
+                if file.endswith('.bag') and file.startswith('data') and file[4].isdigit():
+                    baglist.append(os.path.join(root, file))
 
+    # Map bag files to their corresponding reference trajectories
     bag2traj = {}
-    for r, reffile in enumerate(reftraj_files):
-        d = os.path.dirname(reffile)
-        run = os.path.basename(d)
-        date = os.path.basename(os.path.dirname(d))
-        bagfile = os.path.join(args.bagdir, date, run + '.bag')
-        if not os.path.isfile(bagfile):
-            print(f'Warn: Bag file {bagfile} not found')
+    for bagname in baglist:
+        basename = os.path.basename(bagname)
+        dirname = os.path.dirname(bagname)
+        run_name, _ = os.path.splitext(basename)
+        date = os.path.basename(dirname)
+        reffile = os.path.join(args.reftraj_dir, date, run_name, "tls_T_xt32.txt")
+        if not os.path.isfile(reffile):
+            print(f"Warning: Reference trajectory {reffile} for {bagname} not found")
             continue
-        bag2traj[bagfile] = reffile
-    print(f'Found {len(bag2traj)} bag files with reference trajectories')
+        bag2traj[bagname] = reffile
+    print(f"Found {len(bag2traj)} bag files with reference trajectories")
 
     # Process the front and back segment of every rosbag
     bagfiles = list(bag2traj.keys())

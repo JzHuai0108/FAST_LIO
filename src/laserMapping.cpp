@@ -857,6 +857,8 @@ private:
     std::string state_filename = "scan_states.txt";
 
     LidarLocalizer lidar_localizer;
+    int loc_accum_window;
+    bool loc_follow_odom;
 
 public:
 int initializeSystem(ros::NodeHandle &nh) {
@@ -894,6 +896,9 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<bool>("publish/publish_cloud_in_imu_frame", publish_cloud_in_imu_frame, true);
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
     nh.param<int>("odom_mode", odom_mode, 0);
+    nh.param<int>("loc_accum_window", loc_accum_window, 5);
+    nh.param<bool>("loc_follow_odom", loc_follow_odom, false);
+
     nh.param<std::string>("publish/output_ref_frame", output_ref_frame, "lidar");
     nh.param<bool>("publish/show_submap", show_submap, false);
 
@@ -1045,8 +1050,11 @@ int initializeSystem(ros::NodeHandle &nh) {
                                    filter_size_surf_min, filter_size_map_min, tls_dist_thresh, loc_state_file);
         // lidar_localizer.setPublishers(&pubMapPath, &pubMapFrame, &pubMapPose, &pubPriorMap);
         lidar_localizer.setPublishers(&pubMapPath, &pubMapFrame, &pubMapPose, nullptr); // disable prior map publishing for efficiency.
+        lidar_localizer.setFollowOdometer(loc_follow_odom);
+        lidar_localizer.setAccumWindow(loc_accum_window);
     }
-    cout << "odom_mode? " << OdomModeToString(odom_mode) << ", filter_size_map " << filter_size_map_min << std::endl;
+    cout << "odom_mode? " << OdomModeToString(odom_mode) << ", loc_accum_window " << loc_accum_window
+         << ", loc_follow_odom " << loc_follow_odom << ", filter size map " << filter_size_map_min << std::endl;
     cout << "init_world_t_imu_vec: " << init_world_t_imu_vec[0] << " " << init_world_t_imu_vec[1] << " " << init_world_t_imu_vec[2] << endl;
     cout << "init_world_R_imu: " << endl << init_world_R_imu << endl;
     cout << "init_world_v_imu_vec: " << init_world_v_imu_vec[0] << " " << init_world_v_imu_vec[1] << " " << init_world_v_imu_vec[2] << endl;

@@ -315,6 +315,7 @@ LidarLocalizer::LidarLocalizer():
     frame_map_publisher(nullptr),
     pose_publisher(nullptr) {
     accum_window_ = 5;
+    follow_odom_ = false;
     p_imu.reset(new ImuProcess());
     tls_submap_.reset(new pcl::PointCloud<pcl::PointXYZ>());
     num_gicp_iter_ = 10;
@@ -425,12 +426,12 @@ void LidarLocalizer::push(PointCloudXYZI::ConstPtr unskewed_scan, const double s
         return;
     ros::Time tstamp;
     tstamp.fromSec(stamp);
-    bool ready = propagate(tstamp, state, unskewed_scan);
+    ekf_running_ = propagate(tstamp, state, unskewed_scan);
 
     loadCloseTlsScans(kf_.get_x());
 
     // update the pose and covariance by matching to the prior map
-    if (ready && inbound_) {
+    if (ekf_running_ && inbound_) {
         PointCloudXYZI::Ptr accum_scan(new PointCloudXYZI());
         assembleScan(accum_scan);
         if (odom_states_.size() == 1) {
@@ -440,11 +441,10 @@ void LidarLocalizer::push(PointCloudXYZI::ConstPtr unskewed_scan, const double s
         } else {
             updateState(accum_scan, stamp);
         }
+        saveState();
     }
 
     publish(stamp);
-    if (inbound_)
-        saveState();
 }
 
 void LidarLocalizer::propagateCov(const MeasureGroup &measurements) {
@@ -455,7 +455,11 @@ void LidarLocalizer::propagateCov(const MeasureGroup &measurements) {
     auto state = kf_.get_x();
     p_imu->Process(measurements, kf_, feats_undistort);
     bool init_status_aft = p_imu->needInit();
-    if (init_status_bef) { // restore our initial kf state when the IMU is to be initialized, and we will keep the initial cov from the IMU.
+    if (init_status_bef || !ekf_running_) {
+        // restore our initial kf state when the IMU is to be initialized
+        // (as IMU init changes state) OR when the ekf has not been initialized
+        // (as propagating state with IMU for long will causing localization failure),
+        // and we will keep the initial cov from the IMU.
         kf_.change_x(state);
     }
 }
@@ -506,7 +510,9 @@ bool LidarLocalizer::propagate(const ros::Time &stamp,
 
     // if the frontend odometer may drift badly at some points,
     // then it is better to have the localizer maintain itself by commenting change_x out.
-    // kf_.change_x(map_state);
+    if (follow_odom_) {
+        kf_.change_x(map_state);
+    }
     statestamp_ = stamp;
 
     const auto &state_point = kf_.get_x();

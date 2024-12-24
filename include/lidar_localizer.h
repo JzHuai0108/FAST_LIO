@@ -86,6 +86,10 @@ public:
         map_publisher = map;
     }
 
+    void setAccumWindow(int window) { accum_window_ = window; }
+
+    void setFollowOdometer(bool follow_odom) { follow_odom_ = follow_odom; }
+
     void propagateCov(const MeasureGroup &measurements);
 
     void push(PointCloudXYZI::ConstPtr unskewed_scan, const double stamp, const state_ikfom &state);
@@ -129,7 +133,8 @@ private:
     std::deque<PointCloudXYZI::ConstPtr> scans_; // downsampled unskewed lidar points in lidar frame at end frame time
     std::deque<state_ikfom> odom_states_; // states from the odometry, states and scans have the same length
     std::deque<ros::Time> odom_stamps_; // lidar frame end times.
-    size_t accum_window_;
+    size_t accum_window_;  // number of accumulative scans to match against the prior map.
+    bool follow_odom_;  // have the localizer follow the odometry trajectory? disable this when the odometer is very drift prone.
 
     esekfom::esekf<state_ikfom, 12, input_ikfom> kf_;
     ros::Time statestamp_;
@@ -143,6 +148,7 @@ private:
     DistCheckup dist_checkup_;
     int nearest_scan_idx = -1; // scan idx within the tls_position_ids.
     double filter_size_map_ = 0;
+    bool ekf_running_ = false;
     bool inbound_ = true;
 
     ros::Publisher *path_publisher;
