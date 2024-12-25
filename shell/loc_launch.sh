@@ -10,6 +10,9 @@ tls_dist_thresh=$7
 state_filename=$8
 save_dir=$9
 
+loc_follow_odom=false
+loc_accum_window=5
+
 echo "configyamlname: $configyamlname"
 echo "bagfile: $bagfile"
 echo "fastlio_dir: $fastlio_dir"

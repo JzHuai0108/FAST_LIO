@@ -11,14 +11,14 @@ preprocess:
     blind: 2.0                          # the lidar is unable to measure distances less than blind.
 
 mapping:
-    acc_cov: 0.04                # \sigma^2*frequency
-    gyr_cov: 0.01
+    acc_cov: 0.01                # \sigma^2*frequency
+    gyr_cov: 0.002
     b_acc_cov: 0.001
     b_gyr_cov: 0.001
     fov_degree:    180
     det_range:     120.0
 
-    icp_dist_thresh: 0.8
+    icp_dist_thresh: 0.9
     est_plane_thresh: 0.1
 
     extrinsic_est_en: false
