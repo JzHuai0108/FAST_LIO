@@ -214,6 +214,7 @@ if __name__ == "__main__":
         # get imu topic
         lidar_topic = '/hesai/pandar'
         imu_topic = favor_mti3dk(bagfile)
+        whole_seq_tls_dist_thresh = 100
 
         # forward processing of the front segment
         save_dir = os.path.join(args.outputdir, date, run, 'front')
@@ -221,7 +222,10 @@ if __name__ == "__main__":
         save_init_state(poses[0], [0, 0, 0], times[0], init_pose_file)
         state_filename = "forward_states.txt"
         print('Processing the front segment of {} with IMU topic {}'.format(bagfile, imu_topic))
-        fastlioloc(bagfile, imu_topic, args.tls_dir, args.tls_dist_thresh, state_filename, save_dir, init_pose_file)
+
+        # when the TLS fully covers the seq, we set the tls dist threshold large.
+        front_seq_tls_dist_thresh = whole_seq_tls_dist_thresh if single else args.tls_dist_thresh
+        fastlioloc(bagfile, imu_topic, args.tls_dir, front_seq_tls_dist_thresh, state_filename, save_dir, init_pose_file)
         forwardfronttxt = os.path.join(save_dir, state_filename)
         frontendtime = times[front_endidx]
         frontendpose, frontendv = read_forward_result(forwardfronttxt, frontendtime)
@@ -234,7 +238,7 @@ if __name__ == "__main__":
         save_init_state(frontendpose, negativev, mirrortime, init_pose_file)
         rev_front_bag = os.path.join(save_dir, 'reversed.bag')
         print('Processing the reversed front segment of {} with IMU topic {}'.format(rev_front_bag, imu_topic))
-        fastlioloc(rev_front_bag, imu_topic, args.tls_dir, args.tls_dist_thresh, state_filename, save_dir, init_pose_file)
+        fastlioloc(rev_front_bag, imu_topic, args.tls_dir, front_seq_tls_dist_thresh, state_filename, save_dir, init_pose_file)
         # The below two lines are used in generating the bag of the reversed front segment.
         # endpose = poses[front_endidx] # the pose for the first scan of the reversed bag.
         # reverse_bag2(bagfile, rev_front_bag, lidar_topic, imu_topic, times[0] - buffer, times[front_endidx], endpose)
