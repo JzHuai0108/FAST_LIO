@@ -6,6 +6,7 @@ import scipy.spatial.transform
 import subprocess
 import time
 
+
 def favor_mti3dk(bagfile):
     start = time.time()
     bag = rosbag.Bag(bagfile) # Opening a rosbag often takes very long.
@@ -125,6 +126,43 @@ def read_forward_result(forwardtxt, queryt, delim=','):
         print(f'The closest time is {times[idx].secs}.{times[idx].nsecs:09d} with gap {time_diffs[idx]} secs.')
     return lines[idx][:7], lines[idx][7:10]
 
+
+def get_mirror_time(mirror_time_file, bagfile):
+    """
+    Reads the mirror time from a file or falls back to the bag end time.
+    The mirror time used for reversing the lidar point timestamps and the IMU data stamps.
+    We prefer using the mirror time from a mirror time file which was created along with the reversed bag.
+    This will avoid problems arising from updating the original bag at bagfile which may shift bag end time.
+
+    Args:
+        mirror_time_file (str): Path to the mirror time file.
+        bagfile (str): Path to the bag file.
+
+    Returns:
+        rospy.Time: The mirror time as a rospy.Time object.
+    """
+    if os.path.isfile(mirror_time_file):
+        try:
+            with open(mirror_time_file, 'r') as stream:
+                for line in stream:
+                    if line.startswith('#'):
+                        continue
+                    sec, nsec = line.strip().split('.')
+                    tmirror = rospy.Time(int(sec), int(nsec))
+                    break
+        except (ValueError, IndexError) as e:
+            raise ValueError(f"Error parsing mirror time file: {mirror_time_file}") from e
+    else:
+        print(f"Warning: Unable to find {mirror_time_file}. Using bag.get_end_time() as mirror time, "
+              f"which may cause odometry drift if the bag changes.")
+        try:
+            with rosbag.Bag(bagfile) as bag:
+                tmirror = rospy.Time(bag.get_end_time())
+        except Exception as e:
+            raise RuntimeError(f"Error reading bag file: {bagfile}") from e
+    return tmirror
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser("Run fastlio localization for front and back segment of rosbags in forward and backward mode",
@@ -204,10 +242,10 @@ if __name__ == "__main__":
         run = os.path.basename(d)
         date = os.path.basename(os.path.dirname(d))
 
-        # get mirror time
-        bag = rosbag.Bag(bagfile)
-        tmirror = rospy.Time(bag.get_end_time())
-        bag.close()
+        save_dir = os.path.join(args.outputdir, date, run, 'front')
+        rev_front_bag = os.path.join(save_dir, 'reversed.bag')
+        mirror_time_file = os.path.join(save_dir, 'mirror_time.txt')
+        tmirror = get_mirror_time(mirror_time_file, bagfile)
         t2 = rospy.Duration(tmirror.secs, tmirror.nsecs) * 2
         tmirror2 = rospy.Time(t2.secs, t2.nsecs)
 
@@ -217,7 +255,6 @@ if __name__ == "__main__":
         whole_seq_tls_dist_thresh = 100
 
         # forward processing of the front segment
-        save_dir = os.path.join(args.outputdir, date, run, 'front')
         init_pose_file = os.path.join(save_dir, "forward_init_pose.txt")
         save_init_state(poses[0], [0, 0, 0], times[0], init_pose_file)
         state_filename = "forward_states.txt"
@@ -236,7 +273,6 @@ if __name__ == "__main__":
         mirrortime = tmirror2 - frontendtime
         negativev = [-float(v) for v in frontendv]
         save_init_state(frontendpose, negativev, mirrortime, init_pose_file)
-        rev_front_bag = os.path.join(save_dir, 'reversed.bag')
         print('Processing the reversed front segment of {} with IMU topic {}'.format(rev_front_bag, imu_topic))
         fastlioloc(rev_front_bag, imu_topic, args.tls_dir, front_seq_tls_dist_thresh, state_filename, save_dir, init_pose_file)
         # The below two lines are used in generating the bag of the reversed front segment.

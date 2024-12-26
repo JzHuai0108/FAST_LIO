@@ -1,5 +1,8 @@
 #!/bin/bash
 # This script deals with the localization problematic sequences case by case.
+# In the below, the init time adjustment is sometimes needed because
+# the original rosbag has changed and hence its end time which was used as mirror time.
+
 # Problematic sequences
 # date, run, bad cases, solution, status
 # 0920, 1, f+b forward + backward, enlarge the tls_dist_thresh and decrease the IMU noise level and adjust the backward_init_pose early in time(key), OK
@@ -55,7 +58,9 @@ for bn in "${bagnames[@]}"; do
     # Check if the bag file exists
     if [[ -f "$bagpath" ]]; then
         echo "$bagpath found"
-        python3 "$script" "$reftraj_dir" "$bagpath" "$tls_dir" "$outputdir" --tls_dist_thresh=100
+        cmd="python3 $script $reftraj_dir $bagpath $tls_dir $outputdir --tls_dist_thresh=100"
+        echo $cmd
+        $cmd
     else
         echo "Warning: Bag file $bagpath does not exist."
     fi
