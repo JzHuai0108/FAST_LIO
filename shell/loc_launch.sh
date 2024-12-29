@@ -9,6 +9,11 @@ bag_start_time=$6
 tls_dist_thresh=$7
 state_filename=$8
 save_dir=$9
+if [ "$#" -gt 9 ]; then
+    time_offset_lidar_to_imu=${10}
+else
+    time_offset_lidar_to_imu=0.0
+fi
 
 loc_follow_odom=false
 loc_accum_window=5
@@ -22,6 +27,7 @@ echo "bag_start_time: $bag_start_time"
 echo "tls_dist_thresh: $tls_dist_thresh"
 echo "state_filename: $state_filename"
 echo "save_dir: $save_dir"
+echo "time_offset_lidar_to_imu: $time_offset_lidar_to_imu"
 echo "loc_follow_odom: $loc_follow_odom"
 echo "loc_accum_window: $loc_accum_window"
 
@@ -38,6 +44,8 @@ source $setupfile
 
 configyaml="$fastlio_dir/config/$configyamlname"
 sed -i "/tls_dist_thresh/c\    tls_dist_thresh: $tls_dist_thresh" $configyaml
+sed -i "/time_offset_lidar_to_imu/c\    time_offset_lidar_to_imu: $time_offset_lidar_to_imu" $configyaml
+
 # get state_filename without extension
 logname="${state_filename%%.*}.log"
 
@@ -53,3 +61,4 @@ cmd="roslaunch fast_lio loc_hesai32_handheld.launch \
 echo "$cmd"
 $cmd 2>&1 | tee $save_dir/$logname
 sed -i "/tls_dist_thresh/c\    tls_dist_thresh: 8.0" $configyaml
+sed -i "/time_offset_lidar_to_imu/c\    time_offset_lidar_to_imu: 0.0" $configyaml

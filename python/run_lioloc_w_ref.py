@@ -32,7 +32,8 @@ def parse_time(timestr):
     nsecs = int(parts[1]) * 10**(9 - l)
     return rospy.Time(secs, nsecs)
 
-def fastlioloc(bagfile, imu_topic, tls_dir, tls_dist_thresh, state_filename, save_dir, init_pose_file, start_time=None):
+def fastlioloc(bagfile, imu_topic, tls_dir, tls_dist_thresh, state_filename, save_dir,
+               init_pose_file, start_time=None, td_lidar_to_imu=0.0):
     """
     Run the fastlio localization for a rosbag file.
 
@@ -63,9 +64,9 @@ def fastlioloc(bagfile, imu_topic, tls_dir, tls_dist_thresh, state_filename, sav
     this_script_path = os.path.abspath(__file__)
     fastlio_dir = os.path.dirname(os.path.dirname(this_script_path))
     script_path = os.path.join(fastlio_dir, 'shell/loc_launch.sh')
-
     result = subprocess.run([script_path, configyamlname, bagfile, fastlio_dir, tls_dir, 
-                             init_pose_file, bag_start_time, str(tls_dist_thresh), state_filename, save_dir],
+                             init_pose_file, bag_start_time, str(tls_dist_thresh),
+                             state_filename, save_dir, str(td_lidar_to_imu)],
                             capture_output=True, text=True)
     logfilename = state_filename.split('.')[0] + '.log'
     logfile = os.path.join(save_dir, logfilename)
@@ -165,7 +166,8 @@ def get_mirror_time(mirror_time_file, bagfile):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser("Run fastlio localization for front and back segment of rosbags in forward and backward mode",
+    parser = argparse.ArgumentParser("Run fastlio localization for front and back segment of rosbags "
+                                     "in forward and backward mode, using previous ref traj for initialization.",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("reftraj_dir", type=str, help="Directory containing reference trajectory files")
     parser.add_argument("bagdir", type=str, help="Directory containing rosbags of corrected timestamps")
@@ -238,9 +240,8 @@ if __name__ == "__main__":
                   times[max_diff_idx].secs, times[max_diff_idx].nsecs, times[max_diff_idx+1].secs, times[max_diff_idx+1].nsecs))
             single = False
 
-        d = os.path.dirname(reftraj_file)
-        run = os.path.basename(d)
-        date = os.path.basename(os.path.dirname(d))
+        run = os.path.basename(bagfile).splitext()[0].split('_')[0]
+        date = os.path.basename(os.path.dirname(bagfile))
 
         save_dir = os.path.join(args.outputdir, date, run, 'front')
         rev_front_bag = os.path.join(save_dir, 'reversed.bag')

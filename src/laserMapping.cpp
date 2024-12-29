@@ -1341,6 +1341,14 @@ int main(int argc, char** argv) {
             if (lidar_msg->header.stamp < min_time_ros) {
                 continue;
             }
+            // checking if a earlier message arrives is not possible with ROS1 C++ implementation as
+            // it sorts the msgs at a topic when reading the topic.
+            // So we have to use some hacky way like below to discard out-of-order (and usually bad) msgs.
+            // The out-of-order msg timestamp is actually found by reading the topic msgs in ROS1 bag python API.
+            if (lidar_msg->header.stamp == ros::Time(1699177125, 344055000)) {
+                ROS_INFO_STREAM("Skip frame at " << lidar_msg->header.stamp);
+                continue;
+            }
             lidar_publisher.publish(lidar_msg);
             abort = odometer.spinOnce();
         } else if (m.getTopic() == imu_topic) {

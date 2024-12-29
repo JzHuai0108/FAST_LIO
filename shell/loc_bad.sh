@@ -21,7 +21,7 @@
 
 
 source $HOME/Documents/lidar/fastlioslam_ws/devel/setup.bash
-script=$HOME/Documents/lidar/fastlioslam_ws/src/FAST_LIO/python/run_fastlio_loc.py
+script=$HOME/Documents/lidar/fastlioslam_ws/src/FAST_LIO/python/run_lioloc_w_ref.py
 
 tls_dir=/media/$USER/BackupPlus/jhuai/data/homebrew/whu_tls_1030
 reftraj_dir=/media/$USER/BackupPlus/jhuai/results/ref_trajs_all
