@@ -607,20 +607,27 @@ void LidarLocalizer::refinePoseByGICP(PointCloudXYZI::Ptr feats_undistort, doubl
     size_t nummatches;
     bool converged;
     locToTlsByGicp(feats_down_lidar, tls_submap_, tls_T_lidar, num_gicp_iter_, meansquaredist, nummatches, converged);
-    ROS_INFO_STREAM("GICP init pose:\n" << pred_tls_T_lidar << "\nRefined pose:\n" << tls_T_lidar);
+    double dp = (pred_tls_T_lidar.cast<float>().col(3).head<3>() - tls_T_lidar.col(3).head<3>()).norm();
+    Eigen::AngleAxisf daa(pred_tls_T_lidar.block<3, 3>(0, 0).cast<float>().inverse() * tls_T_lidar.block<3, 3>(0, 0));
+    double dtheta = std::fabs(daa.angle());
+    ROS_INFO_STREAM("GICP init pose:\n" << pred_tls_T_lidar << "\nRefined pose:\n" << tls_T_lidar << "\ndp: " << dp << ", dtheta: " << dtheta);
     ROS_INFO("GICP converged: %d, nummatches: %lu, meansquaredist: %.3f", converged, nummatches, meansquaredist);
     auto endtime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endtime - starttime);
     ROS_INFO("GICP time: %.3f ms", duration.count() / 1000.0);
 
     // update kf state
-    auto map_state = kf_.get_x();
-    Eigen::Affine3d M_T_L_g(tls_T_lidar.cast<double>());
-    Eigen::Affine3d M_T_I_g = M_T_L_g * I_T_L.inverse();
-    O_T_I_kf_ = Eigen::Translation3d(odom_states_.back().pos) * odom_states_.back().rot;
-    M_T_I_kf_ = M_T_I_g;
-    M_T_O_ = M_T_I_kf_ * O_T_I_kf_.inverse();
-    kf_.change_x(map_state);
+    if (dp < 0.7) {
+        auto map_state = kf_.get_x();
+        Eigen::Affine3d M_T_L_g(tls_T_lidar.cast<double>());
+        Eigen::Affine3d M_T_I_g = M_T_L_g * I_T_L.inverse();
+        O_T_I_kf_ = Eigen::Translation3d(odom_states_.back().pos) * odom_states_.back().rot;
+        M_T_I_kf_ = M_T_I_g;
+        M_T_O_ = M_T_I_kf_ * O_T_I_kf_.inverse();
+        kf_.change_x(map_state);
+    } else {
+        ROS_WARN_STREAM("Disregard GICP result as it deviates too much from manual init pose.");
+    }
 }
 
 void LidarLocalizer::updateState(PointCloudXYZI::Ptr feats_undistort, double lidar_end_time) {

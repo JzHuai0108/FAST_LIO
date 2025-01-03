@@ -240,7 +240,7 @@ if __name__ == "__main__":
                   times[max_diff_idx].secs, times[max_diff_idx].nsecs, times[max_diff_idx+1].secs, times[max_diff_idx+1].nsecs))
             single = False
 
-        run = os.path.basename(bagfile).splitext()[0].split('_')[0]
+        run = os.path.splitext(os.path.basename(bagfile))[0].split('_')[0]
         date = os.path.basename(os.path.dirname(bagfile))
 
         save_dir = os.path.join(args.outputdir, date, run, 'front')
