@@ -12,21 +12,21 @@ preprocess:
 
 filter_size_map: 0.08
 mapping:
-    acc_cov: 0.1
-    gyr_cov: 0.1
+    acc_cov: 0.04
+    gyr_cov: 0.01
     b_acc_cov: 0.0001
     b_gyr_cov: 0.0001
     fov_degree:    360
     det_range:     40.0
-    
+
     icp_dist_thresh: 0.95
     est_plane_thresh: 0.1
 
     extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
     extrinsic_T: [ -0.011, -0.02329, 0.04412 ]
-    extrinsic_R: [ 1, 0, 0,
-                   0, 1, 0,
-                   0, 0, 1]
+    extrinsic_R: [ 0.999939593164396, 0.0087930101668, 0.006594921866737,
+                  -0.008846508719717, 0.999927840842429, 0.008127262249273,
+                  -0.006522982883144, -0.008185113340879, 0.999945225806845] # imu_R_lidar from td_rot_calib on s22plus/2025_01_24_16_49_09
     init_world_t_imu: [0.0, 0.0, 0.0]
     init_world_rpy_imu: [0.0, 0.0, 0.0]
     tls_dist_thresh: 8.0

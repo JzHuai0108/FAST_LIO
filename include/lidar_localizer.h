@@ -40,8 +40,8 @@ struct Pose3d {
 
 enum ODOM_MODE {
     Odom = 0,
-    LocToMap,
-    LocWithOdom
+    LocToMap, // loc to the kdtree of the reference map
+    LocWithOdom // loc to the kdtree of the reference map and keep the kdtree of the odometry
 };
 
 std::string OdomModeToString(int mode);
