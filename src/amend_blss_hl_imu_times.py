@@ -79,6 +79,11 @@ def save_txt(file_path, original_timestamps, smoothed_timestamps):
 
 def save_imu_to_bag(bagfile, new_topic, messages, smoothed_timestamps):
     with rosbag.Bag(bagfile, 'a') as outbag:
+        topics_info = outbag.get_type_and_topic_info().topics
+        existing_topics = topics_info.keys()
+        if new_topic in existing_topics:
+            print(f"Warning: Topic {new_topic} already exists in {bagfile}. Skipping modification.")
+            return
         for msg, new_time in zip(messages, smoothed_timestamps):
             nt = rospy.Time.from_sec(new_time)
             msg.header.stamp = nt

@@ -924,6 +924,8 @@ int initializeSystem(ros::NodeHandle &nh) {
     if (state_log_dir.empty()) {
       cerr << "You have to provide save_dir to make the saving functions work properly." << std::endl;
       return 0;
+    } else {
+      make_log_dirs(state_log_dir); // make directories, state_log_dir, and state_log_dir/"PCD"
     }
     cout << "state log dir: " << state_log_dir << ", state filename: " << state_filename << endl;
     path.header.stamp    = ros::Time::now();

@@ -1,0 +1,25 @@
+<launch>
+  <!-- Launch file for velodyne16 VLP-16 LiDAR -->
+
+    <arg name="rviz" default="true" />
+    <arg name="bagfile" default="" />
+    <arg name="save_dir" default="$(find fast_lio)/Log" />
+    <rosparam command="load" file="$(find fast_lio)/config/vlp16_kuangye.yaml" />
+
+    <param name="odom_mode" type="int" value="0" />
+    <param name="bagfile" type="string" value="$(arg bagfile)" />
+    <param name="feature_extract_enable" type="bool" value="0"/>
+    <param name="point_filter_num" type="int" value="4"/>
+    <param name="max_iteration" type="int" value="4" />
+    <param name="filter_size_surf" type="double" value="0.25" />
+    <param name="filter_size_map" type="double" value="0.25" />
+    <param name="cube_side_length" type="double" value="1000" />
+    <param name="runtime_pos_log_enable" type="bool" value="0" />
+    <param name="save_dir" type="string" value="$(arg save_dir)" />
+    <node pkg="fast_lio" type="fastlio_mapping" name="laserMapping" output="screen" /> 
+
+    <group if="$(arg rviz)">
+    <node launch-prefix="nice" pkg="rviz" type="rviz" name="fastlio_rviz" args="-d $(find fast_lio)/rviz_cfg/loam_livox.rviz" />
+    </group>
+
+</launch>

@@ -61,6 +61,7 @@ int load_close_tls_scans(const TlsPositionVector &TLS_positions, const Eigen::Ve
                          const std::string &tls_dir,
                          pcl::PointCloud<pcl::PointXYZ>::Ptr TLS_submap, int prev_nearest_scan_idx);
 
+void make_log_dirs(const std::string& state_log_dir);
 
 class LidarLocalizer {
 public:

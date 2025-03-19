@@ -1,6 +1,7 @@
 #include "lidar_localizer.h"
 #include "pcl_utils.h"
 
+#include <filesystem>
 #include <sstream>
 #include <boost/algorithm/string.hpp>
 
@@ -130,6 +131,26 @@ ros::Time parseTimeStr(const std::string &time_str) {
     }
 }
 
+
+void make_log_dirs(const std::string& state_log_dir) {
+    namespace fs = std::filesystem;
+    try {
+        // Create the main directory if it doesn't exist
+        if (!fs::exists(state_log_dir)) {
+            fs::create_directories(state_log_dir);
+            std::cout << "Created directory: " << state_log_dir << std::endl;
+        }
+
+        // Create the "PCD" subdirectory
+        std::string pcd_dir = state_log_dir + "/PCD";
+        if (!fs::exists(pcd_dir)) {
+            fs::create_directories(pcd_dir);
+            std::cout << "Created subdirectory: " << pcd_dir << std::endl;
+        }
+    } catch (const std::filesystem::filesystem_error& e) {
+        std::cerr << "Error creating directories: " << e.what() << std::endl;
+    }
+}
 
 int load_close_tls_scans(const TlsPositionVector &TLS_positions, const Eigen::Vector3d &cur_position,
                          const std::string &tls_dir,
