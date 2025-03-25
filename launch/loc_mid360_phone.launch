@@ -7,7 +7,7 @@
     <arg name="tls_dir" default="" />
     <arg name="odom_mode" default="1" />
     <arg name="init_lidar_pose_file" default="" />
-    <arg name="bag_start_time" default="0" />
+    <arg name="msg_start_time" default="0" />
     <arg name="state_filename" default="scan_states.txt" />
     <arg name="save_dir" default="$(find fast_lio)/Log" />
     <arg name="tls_ref_traj_files" default="" />
@@ -18,7 +18,7 @@
     <param name="bagfile" type="string" value="$(arg bagfile)" />
     <param name="tls_dir" type="string" value="$(arg tls_dir)" />
     <param name="init_lidar_pose_file" type="string" value="$(arg init_lidar_pose_file)" />
-    <param name="bag_start_time" type="string" value="$(arg bag_start_time)" />
+    <param name="msg_start_time" type="string" value="$(arg msg_start_time)" />
     <param name="state_filename" type="string" value="$(arg state_filename)" />
     <param name="tls_ref_traj_files" type="string" value="$(arg tls_ref_traj_files)" />
     <param name="feature_extract_enable" type="bool" value="0"/>

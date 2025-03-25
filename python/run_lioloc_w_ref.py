@@ -47,9 +47,9 @@ def fastlioloc(bagfile, imu_topic, tls_dir, tls_dist_thresh, state_filename, sav
     start_time: rospy.Time, the start time of the bag file. If None, the start time is set to 0.
     """
     if start_time is not None:
-        bag_start_time = '{}.{:09d}'.format(start_time.secs, start_time.nsecs)
+        msg_start_time = '{}.{:09d}'.format(start_time.secs, start_time.nsecs)
     else:
-        bag_start_time = "0"
+        msg_start_time = "0"
 
     if 'mti3dk' in imu_topic:
         configyamlname = "hesai32_mti3dk_handheld.yaml"
@@ -65,7 +65,7 @@ def fastlioloc(bagfile, imu_topic, tls_dir, tls_dist_thresh, state_filename, sav
     fastlio_dir = os.path.dirname(os.path.dirname(this_script_path))
     script_path = os.path.join(fastlio_dir, 'shell/loc_launch.sh')
     result = subprocess.run([script_path, configyamlname, bagfile, fastlio_dir, tls_dir, 
-                             init_pose_file, bag_start_time, str(tls_dist_thresh),
+                             init_pose_file, msg_start_time, str(tls_dist_thresh),
                              state_filename, save_dir, str(td_lidar_to_imu)],
                             capture_output=True, text=True)
     logfilename = state_filename.split('.')[0] + '.log'

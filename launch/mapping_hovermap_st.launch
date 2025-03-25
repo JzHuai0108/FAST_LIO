@@ -4,10 +4,10 @@
     <arg name="rviz" default="true" />
     <arg name="bagfile" default="" />
     <arg name="save_dir" default="$(find fast_lio)/Log" />
-    <arg name="bag_start_time" default="0" />
+    <arg name="msg_start_time" default="0" />
     <rosparam command="load" file="$(find fast_lio)/config/hovermap_st.yaml" />
   
-    <param name="bag_start_time" type="string" value="$(arg bag_start_time)" />
+    <param name="msg_start_time" type="string" value="$(arg msg_start_time)" />
     <param name="odom_mode" type="int" value="0" />
     <param name="bagfile" type="string" value="$(arg bagfile)" />
     <param name="feature_extract_enable" type="bool" value="0"/>

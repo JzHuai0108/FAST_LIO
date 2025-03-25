@@ -135,11 +135,14 @@ vector<double> init_world_rpy_imu(3, 0.0);
 V3D init_world_t_imu_vec(Zero3d);
 M3D init_world_R_imu(Eye3d);
 V3D init_world_v_imu_vec(Zero3d);
-std::string bag_start_time;
+std::string msg_start_time;
+std::string msg_end_time;
 // start time in unix time to process the lidar data. 
 // If empty or 0, the first lidar message will be used.
 // This time corresponds to the init_world_t_imu_vec and init_world_R_imu.
-ros::Time bag_start_time_ros;
+ros::Time msg_start_time_ros;
+ros::Time msg_end_time_ros;
+bool stationary_start;
 
 V3F XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);
 V3F XAxisPoint_world(LIDAR_SP_LEN, 0.0, 0.0);
@@ -904,7 +907,9 @@ int initializeSystem(ros::NodeHandle &nh) {
 
     nh.param<std::string>("tls_dir", tls_dir, "");
     nh.param<std::string>("init_lidar_pose_file", init_lidar_pose_file, "");
-    nh.param<std::string>("bag_start_time", bag_start_time, "0");
+    nh.param<std::string>("msg_start_time", msg_start_time, "0");
+    nh.param<std::string>("msg_end_time", msg_end_time, "0");
+    nh.param<bool>("stationary_start", stationary_start, true);
     nh.param<std::string>("tls_ref_traj_files", tls_ref_traj_files, "");
     nh.param<double>("mapping/tls_dist_thresh", tls_dist_thresh, 8);
     nh.param<double>("mapping/init_pos_noise", init_pos_noise, 0.0);
@@ -920,7 +925,8 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<double>("mapping/est_plane_thresh", est_plane_thresh, 0.1);
     init_world_t_imu_vec = V3D(init_world_t_imu[0], init_world_t_imu[1], init_world_t_imu[2]);
     init_world_R_imu = EulerToRotM(init_world_rpy_imu);
-    bag_start_time_ros = parseTimeStr(bag_start_time);
+    msg_start_time_ros = parseTimeStr(msg_start_time);
+    msg_end_time_ros = parseTimeStr(msg_end_time);
     if (state_log_dir.empty()) {
       cerr << "You have to provide save_dir to make the saving functions work properly." << std::endl;
       return 0;
@@ -959,6 +965,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
     p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+    p_imu->stationarystart_ = stationary_start;
 
     if (output_ref_frame == "lidar") {
         B_T_S = Pose3d(Lidar_R_wrt_IMU, Lidar_T_wrt_IMU);
@@ -1060,9 +1067,13 @@ int initializeSystem(ros::NodeHandle &nh) {
     cout << "init_world_t_imu_vec: " << init_world_t_imu_vec[0] << " " << init_world_t_imu_vec[1] << " " << init_world_t_imu_vec[2] << endl;
     cout << "init_world_R_imu: " << endl << init_world_R_imu << endl;
     cout << "init_world_v_imu_vec: " << init_world_v_imu_vec[0] << " " << init_world_v_imu_vec[1] << " " << init_world_v_imu_vec[2] << endl;
-    cout << "bag_start_time: " << bag_start_time << ", bag_start_time_ros: " 
-         << bag_start_time_ros.sec << "." << std::setw(9) << std::setfill('0') 
-         << bag_start_time_ros.nsec << std::endl;
+    cout << "msg_start_time: " << msg_start_time << ", msg_start_time_ros: " 
+         << msg_start_time_ros.sec << "." << std::setw(9) << std::setfill('0') 
+         << msg_start_time_ros.nsec << std::endl;
+    cout << "msg_end_time: " << msg_end_time << ", msg_end_time_ros: "
+         << msg_end_time_ros.sec << "." << std::setw(9) << std::setfill('0')
+         << msg_end_time_ros.nsec << std::endl;
+    cout << "stationary start? " << stationary_start << endl;
     cout << "p_pre->lidar_type "<<p_pre->lidar_type<<endl;
     cout << "show submap " << show_submap << endl;
     return 1;
@@ -1332,30 +1343,32 @@ int main(int argc, char** argv) {
 
     rosbag::View view(bag, rosbag::TopicQuery(topics));
     ros::Duration epsi(0.05);
-    ros::Time min_time_ros;
-    if (bag_start_time_ros.toSec() < epsi.toSec())
-        min_time_ros = bag_start_time_ros;
-    else
-        min_time_ros = bag_start_time_ros - epsi;
+    ros::Time min_time_ros = view.getBeginTime();
+    if (msg_start_time_ros > min_time_ros)
+        min_time_ros = msg_start_time_ros;
+    ros::Time max_time_ros = view.getEndTime();
+    if (msg_end_time_ros.toSec() > 0 && msg_end_time_ros < max_time_ros)
+        max_time_ros = msg_end_time_ros;
+
     foreach(rosbag::MessageInstance const m, view) {
         if (m.getTopic() == lid_topic) {
             sensor_msgs::PointCloud2::ConstPtr lidar_msg = m.instantiate<sensor_msgs::PointCloud2>();
-            if (lidar_msg->header.stamp < min_time_ros) {
+            if (lidar_msg->header.stamp < min_time_ros || lidar_msg->header.stamp > max_time_ros) {
                 continue;
             }
             // checking if a earlier message arrives is not possible with ROS1 C++ implementation as
             // it sorts the msgs at a topic when reading the topic.
             // So we have to use some hacky way like below to discard out-of-order (and usually bad) msgs.
             // The out-of-order msg timestamp is actually found by reading the topic msgs in ROS1 bag python API.
-            if (lidar_msg->header.stamp == ros::Time(1699177125, 344055000)) {
-                ROS_INFO_STREAM("Skip frame at " << lidar_msg->header.stamp);
-                continue;
-            }
+            // if (lidar_msg->header.stamp == ros::Time(1699177125, 344055000)) {
+            //     ROS_INFO_STREAM("Skip frame at " << lidar_msg->header.stamp);
+            //     continue;
+            // }
             lidar_publisher.publish(lidar_msg);
             abort = odometer.spinOnce();
         } else if (m.getTopic() == imu_topic) {
             sensor_msgs::Imu::ConstPtr imu_msg = m.instantiate<sensor_msgs::Imu>();
-            if (imu_msg->header.stamp < min_time_ros) {
+            if (imu_msg->header.stamp < min_time_ros || imu_msg->header.stamp > max_time_ros) {
                 continue;
             }
             imu_publisher.publish(imu_msg);
