@@ -4,14 +4,17 @@
     <arg name="rviz" default="true" />
     <arg name="bagfile" default="" />
     <arg name="save_dir" default="$(find fast_lio)/Log" />
+    <arg name="state_filename" default="scan_states.txt" />
     <arg name="msg_start_time" default="0" />
     <arg name="msg_end_time" default="0" />
     <arg name="stationary_start" default="false" />
     <arg name="point_filter_num" default="3" />
-    <rosparam command="load" file="$(find fast_lio)/config/vlp16_kuangye.yaml" />
+    <arg name="configyaml" default="$(find fast_lio)/config/vlp16_kuangye.yaml" />
+    <rosparam command="load" file="$(arg configyaml)" />
 
     <param name="odom_mode" type="int" value="0" />
     <param name="bagfile" type="string" value="$(arg bagfile)" />
+    <param name="state_filename" type="string" value="$(arg state_filename)" />
     <param name="msg_start_time" type="string" value="$(arg msg_start_time)" />
     <param name="msg_end_time" type="string" value="$(arg msg_end_time)" />
     <param name="stationary_start" type="bool" value="$(arg stationary_start)" />
@@ -23,7 +26,7 @@
     <param name="cube_side_length" type="double" value="1000" />
     <param name="runtime_pos_log_enable" type="bool" value="0" />
     <param name="save_dir" type="string" value="$(arg save_dir)" />
-    <node pkg="fast_lio" type="fastlio_mapping" name="laserMapping" output="screen" /> 
+    <node pkg="fast_lio" type="fastlio_mapping" name="laserMapping" output="screen" required="true" /> 
 
     <group if="$(arg rviz)">
     <node launch-prefix="nice" pkg="rviz" type="rviz" name="fastlio_rviz" args="-d $(find fast_lio)/rviz_cfg/loam_livox.rviz" />

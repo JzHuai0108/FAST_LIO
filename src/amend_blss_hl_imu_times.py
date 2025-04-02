@@ -59,7 +59,7 @@ def smooth_imu_timestamps_bottom(timestamps, nominal_interval=0.0025):
 
         prev_jump_idx = jump_idx
     if total_bads:
-        print(f'Warn: Total inconsistency warnings {total_bads} out of {len(timestamps)} with ratio {total_bads / len(timestamps):.4f}')
+        print(f'Warn: Cliff bottom total inconsistency warnings {total_bads} out of {len(timestamps)} with ratio {total_bads / len(timestamps):.4f}')
     diffs2 = np.diff(corrected_timestamps)
     neg_indices = np.where(diffs2 <= 0)[0]
     if len(neg_indices):
@@ -109,7 +109,7 @@ def smooth_imu_timestamps_top(timestamps, nominal_interval=0.0025):
                     f"back predicted {predicted_time:.6f}, diff {dt:.6f}")
             total_bads += 1
     if total_bads:
-        print(f'Warn: Total inconsistency warnings {total_bads} out of {len(timestamps)} with ratio {total_bads / len(timestamps):.4f}')
+        print(f'Warn: Cliff top total inconsistency warnings {total_bads} out of {len(timestamps)} with ratio {total_bads / len(timestamps):.4f}')
     diffs2 = np.diff(corrected_timestamps)
     neg_indices = np.where(diffs2 <= 0)[0]
     if len(neg_indices):
