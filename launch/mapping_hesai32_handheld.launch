@@ -4,9 +4,8 @@
     <arg name="rviz" default="true" />
     <arg name="configyaml" default="hesai32_mti3dk_handheld.yaml" />
     <arg name="bagfile" default="" />
-    <arg name="playbag" default="true" />
-    <arg name="tls_dir" default="" />
     <arg name="odom_mode" default="0" />
+    <arg name="msg_start_time" default="0" />
     <arg name="loc_accum_window" default="5" />
     <arg name="loc_follow_odom" default="false" />
     <arg name="init_lidar_pose_file" default="" />
@@ -18,8 +17,8 @@
     <param name="loc_accum_window" type="int" value="$(arg loc_accum_window)" />
     <param name="loc_follow_odom" type="bool" value="$(arg loc_follow_odom)" />
     <param name="bagfile" type="string" value="$(arg bagfile)" />
-    <param name="tls_dir" type="string" value="$(arg tls_dir)" />
     <param name="init_lidar_pose_file" type="string" value="$(arg init_lidar_pose_file)" />
+    <param name="msg_start_time" type="string" value="$(arg msg_start_time)" />
     <param name="feature_extract_enable" type="bool" value="0"/>
     <param name="point_filter_num" type="int" value="20"/>
     <param name="max_iteration" type="int" value="10" />

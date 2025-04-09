@@ -4,15 +4,12 @@
 
     <arg name="rviz" default="true" />
     <arg name="bagfile" default="" />
-    <arg name="playbag" default="true" />
-    <arg name="tls_dir" default="" />
     <arg name="odom_mode" default="0" />
     <arg name="init_lidar_pose_file" default="" />
     <arg name="save_dir" default="$(find fast_lio)/Log" />
     <rosparam command="load" file="$(find fast_lio)/config/vlp16_whu_ugv.yaml" />
 
     <param name="odom_mode" type="int" value="$(arg odom_mode)" />
-    <param name="tls_dir" type="string" value="$(arg tls_dir)" />
     <param name="init_lidar_pose_file" type="string" value="$(arg init_lidar_pose_file)" />
     <param name="feature_extract_enable" type="bool" value="0"/>
     <param name="point_filter_num" type="int" value="4"/>
@@ -26,10 +23,6 @@
 
     <group if="$(arg rviz)">
     <node launch-prefix="nice" pkg="rviz" type="rviz" name="fastlio_rviz" args="-d $(find fast_lio)/rviz_cfg/loam_livox.rviz" />
-    </group>
-
-    <group if="$(arg playbag)">
-    <node pkg="rosbag" type="play" name="bagplay" args="$(arg bagfile)"/>
     </group>
 
 </launch>
