@@ -344,6 +344,8 @@ void livox_pcl_cbk(const livox_ros_driver2::CustomMsg::ConstPtr &msg)
     sig_buffer.notify_all();
 }
 
+double accelerometer_scale;
+
 void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) 
 {
     publish_count ++;
@@ -358,6 +360,9 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     }
 
     double timestamp = msg->header.stamp.toSec();
+    msg->linear_acceleration.x *= accelerometer_scale;
+    msg->linear_acceleration.y *= accelerometer_scale;
+    msg->linear_acceleration.z *= accelerometer_scale;
 
     mtx_buffer.lock();
 
@@ -917,6 +922,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
     nh.param<double>("mapping/gravity_m_s2", p_imu->G_m_s2, 9.81);
+    nh.param<double>("mapping/accelerometer_scale", accelerometer_scale, 1.0);
     nh.param<string>("save_dir", state_log_dir, "");
     nh.param<string>("state_filename", state_filename, "scan_states.txt");
     nh.param<vector<double>>("mapping/init_world_t_imu", init_world_t_imu, vector<double>());
@@ -1344,12 +1350,13 @@ int main(int argc, char** argv) {
     rosbag::View view(bag, rosbag::TopicQuery(topics));
     ros::Duration epsi(0.05);
     ros::Time min_time_ros = view.getBeginTime();
-    if (msg_start_time_ros > min_time_ros)
+    if (msg_start_time_ros > ros::Time())
         min_time_ros = msg_start_time_ros;
     ros::Time max_time_ros = view.getEndTime();
-    if (msg_end_time_ros.toSec() > 0 && msg_end_time_ros < max_time_ros)
+    if (msg_end_time_ros > ros::Time())
         max_time_ros = msg_end_time_ros;
-
+    int lid_cnt = 0;
+    int imu_cnt = 0;
     foreach(rosbag::MessageInstance const m, view) {
         if (m.getTopic() == lid_topic) {
             sensor_msgs::PointCloud2::ConstPtr lidar_msg = m.instantiate<sensor_msgs::PointCloud2>();
@@ -1364,6 +1371,7 @@ int main(int argc, char** argv) {
             //     ROS_INFO_STREAM("Skip frame at " << lidar_msg->header.stamp);
             //     continue;
             // }
+            ++lid_cnt;
             lidar_publisher.publish(lidar_msg);
             abort = odometer.spinOnce();
         } else if (m.getTopic() == imu_topic) {
@@ -1371,12 +1379,13 @@ int main(int argc, char** argv) {
             if (imu_msg->header.stamp < min_time_ros || imu_msg->header.stamp > max_time_ros) {
                 continue;
             }
+            ++imu_cnt;
             imu_publisher.publish(imu_msg);
         }
         if (abort) break;
     }
     bag.close();
     odometer.saveMap();
-    ROS_INFO("Finished processing bag file %s", bagfile.c_str());
+    ROS_INFO("Finished processing bag file %s, lidar msgs %d, imu msgs %d", bagfile.c_str(), lid_cnt, imu_cnt);
     return 0;
 }
