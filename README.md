@@ -99,8 +99,23 @@ conda activate ros_env # or mamba activate ros_env
 ./build.sh ROS1 "$HOME/Documents/lidar/fastlioslam_ws/devel" "$HOME/Documents/lidar/fastlioslam_ws/devel;$HOME/miniconda3/envs/ros_env" # build in conda
 ./build.sh ROS1 "$HOME/Documents/lidar/fastlioslam_ws/devel" "$HOME/Documents/lidar/fastlioslam_ws/devel" # build in ubuntu system
 
-# error: /usr/bin/env: ‘python’: No such file or directory
+```
+
+#### error: /usr/bin/env: ‘python’: No such file or directory
 sudo apt install python-is-python3
+
+#### error: Could not find the VTK package with the following required components:
+  GUISupportQt.
+  /miniconda3/envs/ros_env/share/pcl-1.14/PCLConfig.cmake:59 (message):
+  visualization is required but vtk was not found.
+
+```
+mamba install -c conda-forge libgl-devel
+libglx-devel is not necessary but can be installed too.
+```
+
+#### Build fast_lio once more
+```
 
 cd fastlioslam_ws
 source devel/setup.bash
