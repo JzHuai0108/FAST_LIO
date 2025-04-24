@@ -50,12 +50,17 @@ std::map<double, Pose> loadTumPoses(const std::string &poseFile) {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <lio_result__txt>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <lio_result_txt> [trim_last_secs=2]" << std::endl;
         std::cout << "Every two lines of the lio_result_txt are the PCD folder and the pose file" << std::endl;
         return -1;
     }
 
     std::string lio_result_txt = argv[1];
+    double trim_last_secs = 2;
+    if (argc > 2) {
+        trim_last_secs = std::stod(argv[2]);
+    }
+    std::cout << "Trimming last " << trim_last_secs << " seconds from each pair" << std::endl;
     std::vector<std::pair<std::string, std::string>> pcdFolderAndPoseFileList;
 
     std::ifstream ifs(lio_result_txt);
@@ -80,7 +85,6 @@ int main(int argc, char** argv) {
         std::cout << i << " " << pcdFolderAndPoseFileList[i].first << "\n\t" << pcdFolderAndPoseFileList[i].second << std::endl;
     }
 
-    double trim_last_secs = 2;
     Pose ref_W_T_L;
     std::map<double, Pose> agg_poses;
     pcl::PointCloud<pcl::PointXYZINormal>::Ptr aggregatedCloud(new pcl::PointCloud<pcl::PointXYZINormal>);
