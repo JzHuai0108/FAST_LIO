@@ -1,0 +1,43 @@
+common:
+  lid_topic: "/hesai/pandar"
+  imu_topic: "/imu0"
+  time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
+  time_offset_lidar_to_imu: 0.0 # lidar clock for lidar messages + time_offset_lidar_to_imu == imu clock for imu messages.
+ 
+preprocess:
+  lidar_type: 4                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 4 for hesai, 5 for livox pointcloud2.
+  scan_line: 32
+  blind: 0.5
+  timestamp_unit: 0                 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
+
+mapping:
+  acc_cov: 0.4
+  gyr_cov: 0.1
+  b_acc_cov: 0.01
+  b_gyr_cov: 0.01
+  fov_degree: 180
+  det_range: 120.0
+  extrinsic_est_en: false      # true: enable the online estimation of IMU-LiDAR extrinsic
+#  extrinsic_T: [ 0.14, 0.07, 0.09  ] # when the phone is facing the lidar. Note that to a phone user facing the screen, the phone cameras are at the phone's top left corner.
+#  extrinsic_R: [ 0, 0, 1,
+#                 1, 0, 0,
+#                 0, 1, 0 ]
+
+  extrinsic_T: [ 0.15, 0.05, -0.1  ] # when the phone is facing away from the lidar. Note that to the phone user facing the screen, the phone cameras are at the phone's top left corner.
+  extrinsic_R: [ 0, 0, 1,
+                 -1, 0, 0,
+                 0, -1, 0 ]
+ 
+publish:
+  scan_publish_en: true       # false: close all the point cloud output
+  dense_publish_en: false       # false: low down the points number in a global-frame point clouds scan.
+  publish_cloud_in_imu_frame: false
+  scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame
+  output_ref_frame: lidar
+  show_submap: false
+
+pcd_save:
+  pcd_save_en: false
+  interval: -1                 # how many LiDAR frames saved in each pcd file;
+  # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
+
