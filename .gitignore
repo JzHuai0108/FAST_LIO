@@ -6,3 +6,9 @@ Log/*.pdf
 .vscode/c_cpp_properties.json
 .vscode/settings.json
 PCD/*.pcd
+
+*.user
+
+python/__pycache__/
+
+src/.idea/

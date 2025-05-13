@@ -63,6 +63,8 @@
 #include <boost/foreach.hpp>
 
 #include <livox_ros_driver2/CustomMsg.h>
+
+#include "aggregate_pcds.hpp"
 #include "dist_checkup.h"
 #include "preprocess.h"
 #include <ikd-Tree/ikd_Tree.h>
@@ -863,6 +865,7 @@ private:
     DistCheckup dist_checkup;
     int nearest_scan_idx = -1; // scan idx within the tls_position_ids.
     std::string state_filename = "scan_states.txt";
+    std::string pos_log_filename;
 
     LidarLocalizer lidar_localizer;
     int loc_accum_window;
@@ -987,7 +990,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS, epsi);
 
     /*** debug record ***/
-    string pos_log_filename = state_log_dir + "/" + state_filename.substr(0, state_filename.size() - 4) + "_odom.txt";
+    pos_log_filename = state_log_dir + "/" + state_filename.substr(0, state_filename.size() - 4) + "_odom.txt";
     fp = fopen(pos_log_filename.c_str(),"w");
     if (fp == NULL) {
         std::cout << "Failed to create state file " << pos_log_filename << "." << std::endl;
@@ -1320,6 +1323,13 @@ void saveMap() {
             s_vec5.push_back(s_plot[i]);
         }
         fclose(fp2);
+    }
+
+    if (pcd_save_en && pcd_save_interval == 1) {
+        const std::string pcd_dir = state_log_dir + "/PCD";
+        std::vector<std::pair<std::string, std::string>> pcd_pose_pairs;
+        pcd_pose_pairs.emplace_back(pcd_dir, pos_log_filename);
+        aggregatePointCloudsWithPose(pcd_pose_pairs, state_log_dir, 0.0);
     }
 }
 };
