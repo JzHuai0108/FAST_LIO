@@ -869,6 +869,11 @@ private:
     bool loc_follow_odom;
 
 public:
+
+bool is_livox_custom_msg() const {
+    return p_pre->lidar_type == AVIA;
+}
+
 int initializeSystem(ros::NodeHandle &nh) {
     nh.param<bool>("publish/path_en",path_en, true);
     nh.param<bool>("publish/scan_publish_en",scan_pub_en, true);
@@ -1333,7 +1338,13 @@ int main(int argc, char** argv) {
     if (!res) return 0;
     bool abort = false;
     ros::Rate rate(500);
-    ros::Publisher lidar_publisher = nh.advertise<sensor_msgs::PointCloud2>(lid_topic, 100);
+    ros::Publisher lidar_publisher;
+    if (odometer.is_livox_custom_msg()) {
+        lidar_publisher = nh.advertise<livox_ros_driver2::CustomMsg>(lid_topic, 100);
+    } else {
+        lidar_publisher = nh.advertise<sensor_msgs::PointCloud2>(lid_topic, 100);
+    }
+
     ros::Publisher imu_publisher = nh.advertise<sensor_msgs::Imu>(imu_topic, 5000);
     rosbag::Bag bag(bagfile, rosbag::bagmode::Read);
     if (bag.isOpen()) {
@@ -1359,20 +1370,28 @@ int main(int argc, char** argv) {
     int imu_cnt = 0;
     foreach(rosbag::MessageInstance const m, view) {
         if (m.getTopic() == lid_topic) {
-            sensor_msgs::PointCloud2::ConstPtr lidar_msg = m.instantiate<sensor_msgs::PointCloud2>();
-            if (lidar_msg->header.stamp < min_time_ros || lidar_msg->header.stamp > max_time_ros) {
-                continue;
+            if (odometer.is_livox_custom_msg()) {
+                livox_ros_driver2::CustomMsg::ConstPtr lidar_msg = m.instantiate<livox_ros_driver2::CustomMsg>();
+                if (lidar_msg->header.stamp < min_time_ros || lidar_msg->header.stamp > max_time_ros) {
+                    continue;
+                }
+                lidar_publisher.publish(lidar_msg);
+            } else {
+                sensor_msgs::PointCloud2::ConstPtr lidar_msg = m.instantiate<sensor_msgs::PointCloud2>();
+                if (lidar_msg->header.stamp < min_time_ros || lidar_msg->header.stamp > max_time_ros) {
+                    continue;
+                }
+                // checking if a earlier message arrives is not possible with ROS1 C++ implementation as
+                // it sorts the msgs at a topic when reading the topic.
+                // So we have to use some hacky way like below to discard out-of-order (and usually bad) msgs.
+                // The out-of-order msg timestamp is actually found by reading the topic msgs in ROS1 bag python API.
+                // if (lidar_msg->header.stamp == ros::Time(1699177125, 344055000)) {
+                //     ROS_INFO_STREAM("Skip frame at " << lidar_msg->header.stamp);
+                //     continue;
+                // }
+                lidar_publisher.publish(lidar_msg);
             }
-            // checking if a earlier message arrives is not possible with ROS1 C++ implementation as
-            // it sorts the msgs at a topic when reading the topic.
-            // So we have to use some hacky way like below to discard out-of-order (and usually bad) msgs.
-            // The out-of-order msg timestamp is actually found by reading the topic msgs in ROS1 bag python API.
-            // if (lidar_msg->header.stamp == ros::Time(1699177125, 344055000)) {
-            //     ROS_INFO_STREAM("Skip frame at " << lidar_msg->header.stamp);
-            //     continue;
-            // }
             ++lid_cnt;
-            lidar_publisher.publish(lidar_msg);
             abort = odometer.spinOnce();
         } else if (m.getTopic() == imu_topic) {
             sensor_msgs::Imu::ConstPtr imu_msg = m.instantiate<sensor_msgs::Imu>();

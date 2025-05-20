@@ -10,7 +10,7 @@
     <arg name="stationary_start" default="true" />
     <arg name="point_filter_num" default="3" />
 	<arg name="odom_mode" default="0" />
-	<rosparam command="load" file="$(find fast_lio)/config/mid360.yaml" />
+	<rosparam command="load" file="$(find fast_lio)/config/mid360_pc2.yaml" />
 
     <param name="odom_mode" type="int" value="$(arg odom_mode)" />
 	<param name="bagfile" type="string" value="$(arg bagfile)" />
