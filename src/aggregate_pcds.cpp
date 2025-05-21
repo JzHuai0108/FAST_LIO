@@ -31,7 +31,7 @@ std::map<double, Pose> loadTumPoses(const std::string &poseFile) {
 }
 
 void aggregatePointCloudsWithPose(const std::vector<std::pair<std::string, std::string>> &pcdFolderAndPoseFileList,
-        const std::string outputdir, double trim_last_secs) {
+        const std::string outputdir, double trim_start_secs, double trim_end_secs) {
     Pose ref_W_T_L;
     std::map<double, Pose> agg_poses;
     pcl::PointCloud<pcl::PointXYZINormal>::Ptr aggregatedCloud(new pcl::PointCloud<pcl::PointXYZINormal>);
@@ -60,7 +60,7 @@ void aggregatePointCloudsWithPose(const std::vector<std::pair<std::string, std::
 
         // transform the poses and put into agg_poses, but skip those in the last trim part
         for (const auto& [timestamp, pose] : poses) {
-            if (timestamp + trim_last_secs > poses.rbegin()->first) {
+            if (poses.begin()->first + trim_start_secs > timestamp || timestamp + trim_end_secs > poses.rbegin()->first) {
                 std::cout << "trimming " << std::fixed << std::setprecision(9) << timestamp << " of pair " << i << std::endl;
                 continue;
             }
@@ -98,7 +98,7 @@ void aggregatePointCloudsWithPose(const std::vector<std::pair<std::string, std::
                     std::cerr << "No pose found for timestamp: " << std::fixed << std::setprecision(9) << timestamp << std::endl;
                     continue;
                 }
-                if (timestamp + trim_last_secs > poses.rbegin()->first) {
+                if (poses.begin()->first + trim_start_secs > timestamp || timestamp + trim_end_secs > poses.rbegin()->first) {
                     continue;
                 }
 

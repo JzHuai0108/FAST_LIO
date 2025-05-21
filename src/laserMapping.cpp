@@ -1329,7 +1329,7 @@ void saveMap() {
         const std::string pcd_dir = state_log_dir + "/PCD";
         std::vector<std::pair<std::string, std::string>> pcd_pose_pairs;
         pcd_pose_pairs.emplace_back(pcd_dir, pos_log_filename);
-        aggregatePointCloudsWithPose(pcd_pose_pairs, state_log_dir, 0.0);
+        aggregatePointCloudsWithPose(pcd_pose_pairs, state_log_dir, 0.0, 0.0);
     }
 }
 };

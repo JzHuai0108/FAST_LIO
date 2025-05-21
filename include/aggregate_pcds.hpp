@@ -23,7 +23,7 @@ struct Pose {
 std::map<double, Pose> loadTumPoses(const std::string &poseFile);
 
 void aggregatePointCloudsWithPose(const std::vector<std::pair<std::string, std::string>> &pcdFolderAndPoseFileList,
-        const std::string outputdir, double trim_last_secs);
+        const std::string outputdir, double trim_start_secs, double trim_end_secs);
 
 static bool hasSuffix(const std::string& str, const std::string& suffix) {
     return str.size() >= suffix.size() &&
