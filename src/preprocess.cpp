@@ -86,13 +86,16 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
     hesai_handler(msg);
     break;
 
-
   case LIVOX_ROS:
     livox_handler(msg);
     break;
 
   case HOVERMAP_ST:
     hovermap_st_handler(msg);
+    break;
+  
+  case HESAI32_XIANGYIN:
+    hesai32_xiangyin_handler(msg);
     break;
 
   default:
@@ -613,6 +616,65 @@ void Preprocess::hesai_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
       }
     }
   }    
+}
+
+
+void Preprocess::hesai32_xiangyin_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+{
+  pl_surf.clear();
+  pl_corn.clear();
+  pl_full.clear();
+
+  constexpr int kPointSize = 22;
+  int numPoints = msg->data.size() / kPointSize;
+  float x, y, z;
+  double time;
+  uint8_t intensity, ring;
+
+  pl_surf.reserve(numPoints);
+  given_offset_time = true;
+  double scan_begin_time = msg->header.stamp.toSec();
+  int min_intensity = 255, max_intensity = 0;
+  for (size_t i = 0; i < numPoints; i++) {
+    memcpy(&x, &msg->data[i * kPointSize], 4);
+    memcpy(&y, &msg->data[i * kPointSize + 4], 4);
+    memcpy(&z, &msg->data[i * kPointSize + 8], 4);
+    memcpy(&time, &msg->data[i * kPointSize + 12], 8);
+    memcpy(&intensity, &msg->data[i * kPointSize + 20], 1);
+    memcpy(&ring, &msg->data[i * kPointSize + 21], 1);
+
+    if (intensity < min_intensity) {
+      min_intensity = intensity;
+    }
+    if (intensity > max_intensity) {
+      max_intensity = intensity;
+    }
+    // std::cout << std::setw(15) << std::setprecision(15) << time << " " << x << " " << y << " " << z << " "
+    //           << intensity << " " << ring << std::endl;
+
+    PointType added_pt;
+    added_pt.normal_x = 0;
+    added_pt.normal_y = 0;
+    added_pt.normal_z = 0;
+    added_pt.x = x;
+    added_pt.y = y;
+    added_pt.z = z;
+    added_pt.intensity = intensity;
+    if (i == 0) {
+      scan_begin_time = time;
+    }
+    added_pt.curvature = (time - scan_begin_time)* time_unit_scale;
+
+    if (i % point_filter_num == 0)
+    {
+      if(added_pt.x*added_pt.x+added_pt.y*added_pt.y+added_pt.z*added_pt.z > (blind * blind))
+      {
+        pl_surf.points.push_back(added_pt);
+      }
+    }
+  }
+  std::cout << "frame " << msg->header.frame_id << " has " << numPoints << " points, intensity range: [" 
+            << min_intensity << ", " << max_intensity << "]" << std::endl;
 }
 
 void Preprocess::hovermap_st_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)

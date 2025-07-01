@@ -10,7 +10,7 @@
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloudXYZI;
 
-enum LID_TYPE{AVIA = 1, VELO16, OUST64, HESAI, LIVOX_ROS, HOVERMAP_ST}; //{1, 2, 3}
+enum LID_TYPE{AVIA = 1, VELO16, OUST64, HESAI, LIVOX_ROS, HOVERMAP_ST, HESAI32_XIANGYIN}; //{1, 2, 3}
 enum TIME_UNIT{SEC = 0, MS = 1, US = 2, NS = 3};
 enum Feature{Nor, Poss_Plane, Real_Plane, Edge_Jump, Edge_Plane, Wire, ZeroPoint};
 enum Surround{Prev, Next};
@@ -148,6 +148,7 @@ class Preprocess
   private:
   void avia_handler(const livox_ros_driver2::CustomMsg::ConstPtr &msg);
   void hesai_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
+  void hesai32_xiangyin_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void hovermap_st_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void livox_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);

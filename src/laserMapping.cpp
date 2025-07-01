@@ -345,6 +345,7 @@ void livox_pcl_cbk(const livox_ros_driver2::CustomMsg::ConstPtr &msg)
 }
 
 double accelerometer_scale;
+double gyro_scale;
 
 void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) 
 {
@@ -363,6 +364,10 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     msg->linear_acceleration.x *= accelerometer_scale;
     msg->linear_acceleration.y *= accelerometer_scale;
     msg->linear_acceleration.z *= accelerometer_scale;
+
+    msg->angular_velocity.x *= gyro_scale;
+    msg->angular_velocity.y *= gyro_scale;
+    msg->angular_velocity.z *= gyro_scale;
 
     mtx_buffer.lock();
 
@@ -928,6 +933,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
     nh.param<double>("mapping/gravity_m_s2", p_imu->G_m_s2, 9.81);
     nh.param<double>("mapping/accelerometer_scale", accelerometer_scale, 1.0);
+    nh.param<double>("mapping/gyro_scale", gyro_scale, 1.0);
     nh.param<string>("save_dir", state_log_dir, "");
     nh.param<string>("state_filename", state_filename, "scan_states.txt");
     nh.param<vector<double>>("mapping/init_world_t_imu", init_world_t_imu, vector<double>());
