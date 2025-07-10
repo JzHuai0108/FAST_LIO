@@ -1,24 +1,6 @@
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <map>
-#include <filesystem>
-#include <pcl/io/pcd_io.h>
-#include <pcl/point_types.h>
-#include <pcl/common/transforms.h>
-#include <Eigen/Core>
-#include <Eigen/Geometry>
+#include "aggregate_pcds.hpp"
 
 namespace fs = std::filesystem;
-
-struct Pose {
-    double time;
-    Eigen::Vector3d translation;
-    Eigen::Quaterniond rotation;
-
-    Pose() : time(0), translation(Eigen::Vector3d::Zero()), rotation(Eigen::Quaterniond::Identity()) {}
-};
 
 std::map<double, Pose> loadTumPoses(const std::string &poseFile) {
     std::map<double, Pose> poses;
@@ -48,43 +30,8 @@ std::map<double, Pose> loadTumPoses(const std::string &poseFile) {
     return poses;
 }
 
-int main(int argc, char** argv) {
-    if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <lio_result_txt> [trim_last_secs=2]" << std::endl;
-        std::cout << "Every two lines of the lio_result_txt are the PCD folder and the pose file" << std::endl;
-        return -1;
-    }
-
-    std::string lio_result_txt = argv[1];
-    double trim_last_secs = 2;
-    if (argc > 2) {
-        trim_last_secs = std::stod(argv[2]);
-    }
-    std::cout << "Trimming last " << trim_last_secs << " seconds from each pair" << std::endl;
-    std::vector<std::pair<std::string, std::string>> pcdFolderAndPoseFileList;
-
-    std::ifstream ifs(lio_result_txt);
-    if (!ifs.is_open()) {
-        std::cerr << "Failed to open lio_result_txt: " << lio_result_txt << std::endl;
-        return -1;
-    }
-
-    std::string line;
-    while (std::getline(ifs, line)) {
-        if (line.empty()) continue;
-        std::string pcdFolder = line;
-        std::getline(ifs, line);
-        if (line.empty()) continue;
-        std::string poseFile = line;
-        pcdFolderAndPoseFileList.push_back(std::make_pair(pcdFolder, poseFile));
-    }
-
-    ifs.close();
-    std::cout  << "Found " << pcdFolderAndPoseFileList.size() << " pairs of PCD folder and pose file" << std::endl;
-    for (size_t i = 0; i < pcdFolderAndPoseFileList.size(); ++i) {
-        std::cout << i << " " << pcdFolderAndPoseFileList[i].first << "\n\t" << pcdFolderAndPoseFileList[i].second << std::endl;
-    }
-
+void aggregatePointCloudsWithPose(const std::vector<std::pair<std::string, std::string>> &pcdFolderAndPoseFileList,
+        const std::string outputdir, double trim_start_secs, double trim_end_secs) {
     Pose ref_W_T_L;
     std::map<double, Pose> agg_poses;
     pcl::PointCloud<pcl::PointXYZINormal>::Ptr aggregatedCloud(new pcl::PointCloud<pcl::PointXYZINormal>);
@@ -113,7 +60,7 @@ int main(int argc, char** argv) {
 
         // transform the poses and put into agg_poses, but skip those in the last trim part
         for (const auto& [timestamp, pose] : poses) {
-            if (timestamp + trim_last_secs > poses.rbegin()->first) {
+            if (poses.begin()->first + trim_start_secs > timestamp || timestamp + trim_end_secs > poses.rbegin()->first) {
                 std::cout << "trimming " << std::fixed << std::setprecision(9) << timestamp << " of pair " << i << std::endl;
                 continue;
             }
@@ -151,7 +98,7 @@ int main(int argc, char** argv) {
                     std::cerr << "No pose found for timestamp: " << std::fixed << std::setprecision(9) << timestamp << std::endl;
                     continue;
                 }
-                if (timestamp + trim_last_secs > poses.rbegin()->first) {
+                if (poses.begin()->first + trim_start_secs > timestamp || timestamp + trim_end_secs > poses.rbegin()->first) {
                     continue;
                 }
 
@@ -186,11 +133,11 @@ int main(int argc, char** argv) {
 
 
     // save all poses
-    std::string outputPoseFile = "aggregated_poses.txt";
+    std::string outputPoseFile = outputdir + "/aggregated_poses.txt";
     std::ofstream ofs(outputPoseFile);
     if (!ofs.is_open()) {
         std::cerr << "Failed to open " << outputPoseFile << " for writing." << std::endl;
-        return -1;
+        return;
     }
     for (const auto& [timestamp, pose] : agg_poses) {
         ofs << std::fixed << std::setprecision(9) << timestamp << " ";
@@ -199,12 +146,11 @@ int main(int argc, char** argv) {
     }
     ofs.close();
 
-    std::string outputFilename = "aggregated_cloud.pcd";
+    std::string outputFilename = outputdir + "/aggregated_cloud.pcd";
     if (pcl::io::savePCDFileBinary(outputFilename, *aggregatedCloud) < 0) {
         std::cerr << "Failed to save aggregated point cloud." << std::endl;
-        return -1;
+        return;
     }
 
     std::cout << "Aggregated point cloud saved to " << outputFilename << std::endl;
-    return 0;
 }

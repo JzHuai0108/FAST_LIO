@@ -8,7 +8,7 @@
     <arg name="msg_start_time" default="0" />
     <arg name="msg_end_time" default="0" />
     <arg name="stationary_start" default="false" />
-    <arg name="point_filter_num" default="3" />
+    <arg name="point_filter_num" default="1" />
     <arg name="configyaml" default="$(find fast_lio)/config/vlp16_kuangye.yaml" />
     <rosparam command="load" file="$(arg configyaml)" />
 

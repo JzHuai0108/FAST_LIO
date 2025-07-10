@@ -2,8 +2,8 @@ common:
   lid_topic: "/hesai/pandar"
   imu_topic: "/imu0"
   time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
-  time_offset_lidar_to_imu: 0.0 # lidar clock for lidar messages + time_offset_lidar_to_imu == imu clock for imu messages.
- 
+  time_offset_lidar_to_imu: 0 # lidar clock for lidar messages + time_offset_lidar_to_imu == imu clock for imu messages.
+
 preprocess:
   lidar_type: 4                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 4 for hesai, 5 for livox pointcloud2.
   scan_line: 32
@@ -18,15 +18,17 @@ mapping:
   fov_degree: 180
   det_range: 120.0
   extrinsic_est_en: false      # true: enable the online estimation of IMU-LiDAR extrinsic
-#  extrinsic_T: [ 0.14, 0.07, 0.09  ] # when the phone is facing the lidar. Note that to a phone user facing the screen, the phone cameras are at the phone's top left corner.
+  extrinsic_T: [ 0.14, 0.07, 0.09 ] # when the phone's screen is inward, facing the lidar. Note that to a phone user facing the screen, the phone cameras are at the phone's top left corner.
 #  extrinsic_R: [ 0, 0, 1,
 #                 1, 0, 0,
 #                 0, 1, 0 ]
-
-  extrinsic_T: [ 0.15, 0.05, -0.1  ] # when the phone is facing away from the lidar. Note that to the phone user facing the screen, the phone cameras are at the phone's top left corner.
-  extrinsic_R: [ 0, 0, 1,
-                 -1, 0, 0,
-                 0, -1, 0 ]
+  extrinsic_R: [-0.04501212816716215,-0.015614183228385285,0.998864408015409,
+                0.9986821102691202,0.023975336251309844,0.04537869412018975,
+                -0.024656661296292588,0.9995906064653406,0.014514424548458051] # estimated by td_rot_calib for s22plus imu and hesai pandar xt32
+#  extrinsic_T: [ 0.15, 0.05, -0.1  ] # when the phone's screen is outward, facing away from the lidar. Note that to the phone user facing the screen, the phone cameras are at the phone's top left corner.
+#  extrinsic_R: [ 0, 0, 1,
+#                 -1, 0, 0,
+#                 0, -1, 0 ]
  
 publish:
   scan_publish_en: true       # false: close all the point cloud output
@@ -37,7 +39,7 @@ publish:
   show_submap: false
 
 pcd_save:
-  pcd_save_en: false
-  interval: -1                 # how many LiDAR frames saved in each pcd file;
+  pcd_save_en: true
+  interval: 1                 # how many LiDAR frames saved in each pcd file;
   # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
 

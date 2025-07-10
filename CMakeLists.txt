@@ -78,7 +78,7 @@ catkin_package(
   INCLUDE_DIRS
 )
 
-add_executable(fastlio_mapping src/laserMapping.cpp src/lidar_localizer.cpp src/IMU_Processing.cpp src/pcl_utils.cpp
+add_executable(fastlio_mapping src/aggregate_pcds.cpp src/laserMapping.cpp src/lidar_localizer.cpp src/IMU_Processing.cpp src/pcl_utils.cpp
     include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp src/dist_checkup.cpp)
 target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
 target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
@@ -89,5 +89,5 @@ target_link_libraries(check_traj_in_tls ${PCL_LIBRARIES})
 add_executable(rectify_hovermap_pcl src/rectify_hovermap_pcl.cpp)
 target_link_libraries(rectify_hovermap_pcl ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 
-add_executable(aggregate_pcds src/aggregate_pcds.cpp)
+add_executable(aggregate_pcds src/aggregate_pcds_app.cpp src/aggregate_pcds.cpp)
 target_link_libraries(aggregate_pcds ${PCL_LIBRARIES})
