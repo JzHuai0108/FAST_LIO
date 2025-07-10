@@ -32,7 +32,8 @@ def parse_time(timestr):
     nsecs = int(parts[1]) * 10**(9 - l)
     return rospy.Time(secs, nsecs)
 
-def fastlioloc(bagfile, imu_topic, tls_dir, tls_dist_thresh, state_filename, save_dir,
+def fastlioloc(bagfile, imu_topic, tls_dir, tls_dist_thresh, loc_follow_odom,
+               state_filename, save_dir,
                init_pose_file, start_time=None, td_lidar_to_imu=0.0):
     """
     Run the fastlio localization for a rosbag file.
@@ -66,8 +67,8 @@ def fastlioloc(bagfile, imu_topic, tls_dir, tls_dist_thresh, state_filename, sav
     script_path = os.path.join(fastlio_dir, 'shell/loc_launch.sh')
     result = subprocess.run([script_path, configyamlname, bagfile, fastlio_dir, tls_dir, 
                              init_pose_file, msg_start_time, str(tls_dist_thresh),
-                             state_filename, save_dir, str(td_lidar_to_imu)],
-                            capture_output=True, text=True)
+                             str(loc_follow_odom).lower(), state_filename, save_dir, str(td_lidar_to_imu)],
+                             capture_output=True, text=True)
     logfilename = state_filename.split('.')[0] + '.log'
     logfile = os.path.join(save_dir, logfilename)
     with open(logfile, 'a') as f:
@@ -173,7 +174,11 @@ if __name__ == "__main__":
     parser.add_argument("bagdir", type=str, help="Directory containing rosbags of corrected timestamps")
     parser.add_argument("tls_dir", type=str, help="Directory containing tls data")
     parser.add_argument("outputdir", type=str, help="Output directory")
+    parser.add_argument("--loc_follow_odom", action="store_true", default=False,
+                    help="Enable localization to follow odometry frame.")
     parser.add_argument("--tls_dist_thresh", type=float, default=8.0, help="Threshold on distance to TLS trajectory to abort LIO localization")
+    parser.add_argument("--loc_type", type=str, default="", help="Type of localization to run, "
+                        "options: front_fwd, front_bwd, back_fwd, back_bwd. If empty, run all.")
     args = parser.parse_args()
 
     baglist = []
@@ -259,11 +264,13 @@ if __name__ == "__main__":
         init_pose_file = os.path.join(save_dir, "forward_init_pose.txt")
         save_init_state(poses[0], [0, 0, 0], times[0], init_pose_file)
         state_filename = "forward_states.txt"
-        print('Processing the front segment of {} with IMU topic {}'.format(bagfile, imu_topic))
 
         # when the TLS fully covers the seq, we set the tls dist threshold large.
         front_seq_tls_dist_thresh = whole_seq_tls_dist_thresh if single else args.tls_dist_thresh
-        fastlioloc(bagfile, imu_topic, args.tls_dir, front_seq_tls_dist_thresh, state_filename, save_dir, init_pose_file)
+        if args.loc_type == 'front_fwd' or len(args.loc_type) == 0:
+            print('Processing the front segment of {} with IMU topic {}'.format(bagfile, imu_topic))
+            fastlioloc(bagfile, imu_topic, args.tls_dir, front_seq_tls_dist_thresh, args.loc_follow_odom, 
+                       state_filename, save_dir, init_pose_file)
         forwardfronttxt = os.path.join(save_dir, state_filename)
         frontendtime = times[front_endidx]
         frontendpose, frontendv = read_forward_result(forwardfronttxt, frontendtime)
@@ -274,11 +281,13 @@ if __name__ == "__main__":
         mirrortime = tmirror2 - frontendtime
         negativev = [-float(v) for v in frontendv]
         save_init_state(frontendpose, negativev, mirrortime, init_pose_file)
-        print('Processing the reversed front segment of {} with IMU topic {}'.format(rev_front_bag, imu_topic))
-        fastlioloc(rev_front_bag, imu_topic, args.tls_dir, front_seq_tls_dist_thresh, state_filename, save_dir, init_pose_file)
-        # The below two lines are used in generating the bag of the reversed front segment.
-        # endpose = poses[front_endidx] # the pose for the first scan of the reversed bag.
-        # reverse_bag2(bagfile, rev_front_bag, lidar_topic, imu_topic, times[0] - buffer, times[front_endidx], endpose)
+        if args.loc_type == 'front_bwd' or len(args.loc_type) == 0:
+            print('Processing the reversed front segment of {} with IMU topic {}'.format(rev_front_bag, imu_topic))
+            fastlioloc(rev_front_bag, imu_topic, args.tls_dir, front_seq_tls_dist_thresh, args.loc_follow_odom,
+                       state_filename, save_dir, init_pose_file)
+            # The below two lines are used in generating the bag of the reversed front segment, see whu_tls_regis/reverse_bag/reverse_bag.py
+            # endpose = poses[front_endidx] # the pose for the first scan of the reversed bag.
+            # reverse_bag2(bagfile, rev_front_bag, lidar_topic, imu_topic, times[0] - buffer, times[front_endidx], endpose)
 
         if not single:
             # backward processing of the back segment
@@ -288,21 +297,27 @@ if __name__ == "__main__":
             state_filename = "backward_states.txt"
             mirrortime = tmirror2 - times[-1]
             save_init_state(poses[-1], [0, 0, 0], mirrortime, init_pose_file)
-            print('Processing the reversed back segment of {} with IMU topic {}'.format(rev_back_bag, imu_topic))
-            fastlioloc(rev_back_bag, imu_topic, args.tls_dir, args.tls_dist_thresh, state_filename, save_dir, init_pose_file)
+            if args.loc_type == 'back_bwd' or len(args.loc_type) == 0:
+                print('Processing the reversed back segment of {} with IMU topic {}'.format(rev_back_bag, imu_topic))
+                fastlioloc(rev_back_bag, imu_topic, args.tls_dir, args.tls_dist_thresh, args.loc_follow_odom,
+                           state_filename, save_dir, init_pose_file)
 
             mirrorbackendtime = tmirror2 - times[front_endidx+1]
             mirrorbackendtime = rospy.Time(mirrorbackendtime.secs, mirrorbackendtime.nsecs)
             backwardbacktxt = os.path.join(save_dir, state_filename)
             backendpose, backendv = read_forward_result(backwardbacktxt, mirrorbackendtime)
+
             # forward processing of the back segment
             init_pose_file = os.path.join(save_dir, "forward_init_pose.txt")
             state_filename = "forward_states.txt"
             negativev = [-float(v) for v in backendv]
             save_init_state(backendpose, negativev, times[front_endidx+1], init_pose_file)
-            print('Processing the back segment of {} with IMU topic {}'.format(bagfile, imu_topic))
-            fastlioloc(bagfile, imu_topic, args.tls_dir, args.tls_dist_thresh, state_filename, save_dir, init_pose_file, times[front_endidx+1])
-            # The below two lines are used in generating the bag of the reversed front segment.
-            # endpose = poses[-1]
-            # reverse_bag2(bagfile, rev_back_bag, lidar_topic, imu_topic, times[front_endidx+1] - buffer, times[-1] + buffer, endpose)
+            if args.loc_type == 'back_fwd' or len(args.loc_type) == 0:
+                print('Processing the back segment of {} with IMU topic {}'.format(bagfile, imu_topic))
+                fastlioloc(bagfile, imu_topic, args.tls_dir, args.tls_dist_thresh, args.loc_follow_odom,
+                           state_filename, save_dir, init_pose_file,
+                           times[front_endidx+1] - rospy.Duration(0.5)) # advance the bag start time to let odometer initialize before the localizer.
+                # The below two lines are used in generating the bag of the reversed back segment, see whu_tls_regis/reverse_bag/reverse_bag.py
+                # endpose = poses[-1]
+                # reverse_bag2(bagfile, rev_back_bag, lidar_topic, imu_topic, times[front_endidx+1] - buffer, times[-1] + buffer, endpose)
     print('Done')

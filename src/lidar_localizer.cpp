@@ -432,8 +432,8 @@ void LidarLocalizer::initialize(const std::string &init_lidar_pose_file,
     init_state.bg  = V3D(0, 0, 0);
     init_state.ba  = V3D(0, 0, 0);
     ROS_INFO_STREAM("Localizer init pose with external translation " << init_world_t_imu_vec.transpose()
-                     << " and rotation\n" << init_world_R_imu << "\nand gravity "
-                     << init_state.grav.get_vect().transpose() << " at " << timestr);
+                     << " and rotation\n" << init_world_R_imu << "\nand velocity " << init_world_v_imu_vec.transpose()
+                     << " and gravity " << init_state.grav.get_vect().transpose() << " at " << timestr);
     kf_.change_x(init_state);
     statestamp_ = parseTimeStr(timestr);
     p_imu->first_lidar_time = statestamp_.toSec();

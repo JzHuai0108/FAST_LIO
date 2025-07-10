@@ -91,6 +91,10 @@ public:
 
     void setFollowOdometer(bool follow_odom) { follow_odom_ = follow_odom; }
 
+    state_ikfom getLatestState() const {
+        return kf_.get_x();
+    }
+
     void propagateCov(const MeasureGroup &measurements);
 
     void push(PointCloudXYZI::ConstPtr unskewed_scan, const double stamp, const state_ikfom &state);

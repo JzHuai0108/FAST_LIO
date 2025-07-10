@@ -1077,6 +1077,12 @@ int initializeSystem(ros::NodeHandle &nh) {
         lidar_localizer.initialize(init_lidar_pose_file, tls_dir, tls_ref_traj_files,
                                    Lidar_R_wrt_IMU, Lidar_T_wrt_IMU, p_imu->G_m_s2,
                                    filter_size_surf_min, filter_size_map_min, tls_dist_thresh, loc_state_file);
+        state_ikfom init_state = lidar_localizer.getLatestState();
+        init_world_t_imu_vec = init_state.pos;
+        init_world_R_imu = init_state.rot.toRotationMatrix();
+        init_world_v_imu_vec = init_state.vel;
+        p_imu->set_init_pose(init_world_t_imu_vec, init_world_R_imu, init_world_v_imu_vec);
+
         // lidar_localizer.setPublishers(&pubMapPath, &pubMapFrame, &pubMapPose, &pubPriorMap);
         lidar_localizer.setPublishers(&pubMapPath, &pubMapFrame, &pubMapPose, nullptr); // disable prior map publishing for efficiency.
         lidar_localizer.setFollowOdometer(loc_follow_odom);
@@ -1088,7 +1094,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     cout << "init_world_R_imu: " << endl << init_world_R_imu << endl;
     cout << "init_world_v_imu_vec: " << init_world_v_imu_vec[0] << " " << init_world_v_imu_vec[1] << " " << init_world_v_imu_vec[2] << endl;
     cout << "msg_start_time: " << msg_start_time << ", msg_start_time_ros: " 
-         << msg_start_time_ros.sec << "." << std::setw(9) << std::setfill('0') 
+         << msg_start_time_ros.sec << "." << std::setw(9) << std::setfill('0')
          << msg_start_time_ros.nsec << std::endl;
     cout << "msg_end_time: " << msg_end_time << ", msg_end_time_ros: "
          << msg_end_time_ros.sec << "." << std::setw(9) << std::setfill('0')

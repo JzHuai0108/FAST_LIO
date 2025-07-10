@@ -6,6 +6,7 @@
     <arg name="bagfile" default="" />
     <arg name="tls_dir" default="" />
     <arg name="odom_mode" default="1" />
+    <arg name="loc_follow_odom" default="false" />
     <arg name="init_lidar_pose_file" default="" />
     <arg name="msg_start_time" default="0" />
     <arg name="state_filename" default="scan_states.txt" />
@@ -15,6 +16,7 @@
     <rosparam command="load" file="$(find fast_lio)/config/$(arg configyaml)" />
 
     <param name="odom_mode" type="int" value="$(arg odom_mode)" />
+    <param name="loc_follow_odom" type="bool" value="$(arg loc_follow_odom)" />
     <param name="bagfile" type="string" value="$(arg bagfile)" />
     <param name="tls_dir" type="string" value="$(arg tls_dir)" />
     <param name="init_lidar_pose_file" type="string" value="$(arg init_lidar_pose_file)" />

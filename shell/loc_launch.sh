@@ -7,15 +7,15 @@ tls_dir=$4
 init_pose_file=$5
 msg_start_time=$6
 tls_dist_thresh=$7
-state_filename=$8
-save_dir=$9
-if [ "$#" -gt 9 ]; then
-    time_offset_lidar_to_imu=${10}
+loc_follow_odom=$8
+state_filename=$9
+save_dir=$10
+if [ "$#" -gt 10 ]; then
+    time_offset_lidar_to_imu=${11}
 else
     time_offset_lidar_to_imu=0.0
 fi
 
-loc_follow_odom=false
 loc_accum_window=5
 
 echo "configyamlname: $configyamlname"

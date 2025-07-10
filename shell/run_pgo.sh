@@ -1,3 +1,4 @@
+# deprecated, use the entry point.sh in cpgo instead.
 
 ws_dir=/home/jhuai/Documents/swift_vio_ws
 ws_dir=/home/pi/Documents/lie_splines_ws
