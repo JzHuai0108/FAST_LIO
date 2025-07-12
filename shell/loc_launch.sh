@@ -50,15 +50,23 @@ sed -i "/time_offset_lidar_to_imu/c\    time_offset_lidar_to_imu: $time_offset_l
 
 # get state_filename without extension
 logname="${state_filename%%.*}.log"
+# gather all four paths into one variable
+ref_traj_files="${ref_traj_file1};${ref_traj_file2};${ref_traj_file3};${ref_traj_file4}"
 
+# now wrap THEM in *single* quotes so Bash treats the whole chunk
+# (including semicolons) as one argument:
 cmd="roslaunch fast_lio loc_hesai32_handheld.launch \
     configyaml:=$configyamlname \
-    bagfile:=$bagfile tls_ref_traj_files:=\"$ref_traj_file1;$ref_traj_file2;$ref_traj_file3;$ref_traj_file4\" \
-    tls_dir:=$tls_dir odom_mode:=2 \
+    bagfile:=$bagfile \
+    tls_ref_traj_files:=${ref_traj_files} \
+    tls_dir:=$tls_dir \
+    odom_mode:=2 \
     init_lidar_pose_file:=$init_pose_file \
     msg_start_time:=$msg_start_time \
     state_filename:=$state_filename \
-    save_dir:=$save_dir loc_accum_window:=$loc_accum_window loc_follow_odom:=$loc_follow_odom"
+    save_dir:=$save_dir \
+    loc_accum_window:=$loc_accum_window \
+    loc_follow_odom:=$loc_follow_odom"
 
 echo "$cmd"
 # $cmd 2>&1 | tee $save_dir/$logname
