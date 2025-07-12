@@ -7,16 +7,19 @@
 # Problematic sequences
 # 2025 May 6 edited
 # case, symptom, solution, status
-# 1105/4/front/bwd, some jumps,
-# 1105_aft/4/front/fwd, a big jump,
-# 1208/4/back/fwd,
-# 1213/4/back/fwd,
-# 1213/5/back/fwd
-# 0113/2/back/fwd
-# 0115/3/back/fwd
-# 0116_eve/5/back/fwd
-# 0123/3/back/fwd
+# 1105/2/front/bwd, traj at the end diff much from fwd traj, cull end seconds?
+# 1105/4/front/bwd, some jumps, initialize localizer at each step with odometry increment through traj, OK
+# 1105_aft/4/front/fwd, a big jump, initialize localizer at each step with odometry increment through traj, OK
+# 1208/4/back/fwd, huge drift, initialize localizer at each step with odometry increment for 1 second, OK
+# 1213/4/back/fwd, huge drift, initialize localizer at each step with odometry increment for 1 second, OK
+# 1213/5/back/fwd, huge drift, initialize localizer at each step with odometry increment for 1 second, OK
+# 0113/2/back/fwd, huge drift, initialize localizer at each step with odometry increment for 1 second, OK
+# 0115/3/back/fwd, huge drift, initialize localizer at each step with odometry increment for 1 second, OK
+# 0116_eve/5/back/fwd, huge drift, initialize localizer at each step with odometry increment for 1 second, OK
+# 0123/3/back/fwd, huge drift, initialize localizer at each step with odometry increment for 1 second, OK
 
+
+# Also, check the line "The map state at xx is much earlier than odometry state at xx, but we have to init anyway"
 
 # 2025 Jan 3 edited
 # date, bad case, solution, status
@@ -33,6 +36,28 @@ source $FASTLIO_WS/devel/setup.bash
 
 fastlio_dir=$FASTLIO_WS/src/FAST_LIO
 script=$fastlio_dir/python/run_lioloc_w_ref.py
+
+
+
+run_loc() {
+for i in "${!bagnames[@]}"; do
+    bn=${bagnames[$i]}
+    loctype=${loctypes[$i]}
+    echo "Processing $bn with loctype $loctype"
+    bagpath="$bagdir/$bn"
+    # Check if the bag file exists
+    if [[ -f "$bagpath" ]]; then
+        echo "$bagpath found"
+        loc_flag="--loc_follow_odom=${follow_odom[$i]}"
+        cmd="python3 $script $reftraj_dir $bagpath $tls_dir $outputdir $loc_flag --tls_dist_thresh=8 --loc_type=$loctype"
+        echo "$cmd"
+        $cmd
+    else
+        echo "Warning: Bag file $bagpath does not exist."
+    fi
+done
+}
+
 
 tls_dir=/media/$USER/BackupPlus/jhuai/data/homebrew/whu_tls_1030
 reftraj_dir=/media/$USER/BackupPlus/jhuai/results/ref_trajs_all
@@ -60,6 +85,10 @@ back_fwd
 back_fwd
 )
 
+follow_odom=(1e6 1e6 1 1 1 1 1 1 1)
+
+run_loc
+
 
 tls_dir=/media/$USER/MyBookDuo/jhuai/data/homebrew/whu_tls_1030
 reftraj_dir=/media/$USER/MyBookDuo/jhuai/results/ref_trajs_all
@@ -75,25 +104,5 @@ loctypes=(back_fwd
 
 follow_odom=(1)
 
-for i in "${!bagnames[@]}"; do
-    bn=${bagnames[$i]}
-    loctype=${loctypes[$i]}
-    echo "Processing $bn with loctype $loctype"
-    bagpath="$bagdir/$bn"
-    # Check if the bag file exists
-    if [[ -f "$bagpath" ]]; then
-        echo "$bagpath found"
-        # Construct optional flag based on follow_odom[i]
-        if [[ ${follow_odom[$i]} -eq 1 ]]; then
-            loc_flag="--loc_follow_odom"
-        else
-            loc_flag=""
-        fi
+run_loc
 
-        cmd="python3 $script $reftraj_dir $bagpath $tls_dir $outputdir $loc_flag --tls_dist_thresh=100 --loc_type=$loctype"
-        echo "$cmd"
-        $cmd
-    else
-        echo "Warning: Bag file $bagpath does not exist."
-    fi
-done

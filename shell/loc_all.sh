@@ -16,4 +16,4 @@ outputdir=/media/$USER/BackupPlus/jhuai/results/front_back_snapshots
 python3 -u $script $reftraj_dir $bagdir $tls_dir $outputdir 2>&1 | tee $outputdir/fastlioloc.log
 
 # Next, go to radar_data_preprocess to viz the resulting trajs with plot_trajs2,
-# gather_ref_poses and compute the deviations.
+# use gather_ref_poses with fb_diff option to generate the averaged ref trajs and compute the deviations.

@@ -8,7 +8,7 @@
     <arg name="msg_start_time" default="0" />
     <arg name="loc_accum_window" default="5" />
     <arg name="point_filter_num" default="3" />
-    <arg name="loc_follow_odom" default="false" />
+    <arg name="loc_follow_odom" default="0.0" />
     <arg name="init_lidar_pose_file" default="" />
     <arg name="save_dir" default="$(find fast_lio)/Log" />
 
@@ -16,7 +16,7 @@
 
     <param name="odom_mode" type="int" value="$(arg odom_mode)" />
     <param name="loc_accum_window" type="int" value="$(arg loc_accum_window)" />
-    <param name="loc_follow_odom" type="bool" value="$(arg loc_follow_odom)" />
+    <param name="loc_follow_odom" type="double" value="$(arg loc_follow_odom)" />
     <param name="bagfile" type="string" value="$(arg bagfile)" />
     <param name="init_lidar_pose_file" type="string" value="$(arg init_lidar_pose_file)" />
     <param name="msg_start_time" type="string" value="$(arg msg_start_time)" />

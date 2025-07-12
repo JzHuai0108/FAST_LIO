@@ -89,7 +89,7 @@ public:
 
     void setAccumWindow(int window) { accum_window_ = window; }
 
-    void setFollowOdometer(bool follow_odom) { follow_odom_ = follow_odom; }
+    void setFollowOdometer(double follow_odom) { follow_odom_ = follow_odom; }
 
     state_ikfom getLatestState() const {
         return kf_.get_x();
@@ -139,8 +139,9 @@ private:
     std::deque<state_ikfom> odom_states_; // states from the odometry, states and scans have the same length
     std::deque<ros::Time> odom_stamps_; // lidar frame end times.
     size_t accum_window_;  // number of accumulative scans to match against the prior map.
-    bool follow_odom_;  // have the localizer follow the odometry trajectory? disable this when the odometer is very drift prone.
+    double follow_odom_;  // have the localizer follow the odometry trajectory for such long time since the start. If nonpositive, will not follow odom at all.
 
+    ros::Time init_state_stamp_;
     esekfom::esekf<state_ikfom, 12, input_ikfom> kf_;
     ros::Time statestamp_;
 

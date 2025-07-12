@@ -9,11 +9,13 @@ msg_start_time=$6
 tls_dist_thresh=$7
 loc_follow_odom=$8
 state_filename=$9
-save_dir=$10
-if [ "$#" -gt 10 ]; then
-    time_offset_lidar_to_imu=${11}
+save_dir="${10}"
+
+# if we have an 11th parameter, use it, otherwise default to 0.0
+if [ "$#" -ge 11 ]; then
+    time_offset_lidar_to_imu="${11}"
 else
-    time_offset_lidar_to_imu=0.0
+    time_offset_lidar_to_imu="0.0"
 fi
 
 loc_accum_window=5
@@ -59,6 +61,7 @@ cmd="roslaunch fast_lio loc_hesai32_handheld.launch \
     save_dir:=$save_dir loc_accum_window:=$loc_accum_window loc_follow_odom:=$loc_follow_odom"
 
 echo "$cmd"
-$cmd 2>&1 | tee $save_dir/$logname
+# $cmd 2>&1 | tee $save_dir/$logname
+$cmd # we capture the std output in the python script calling loc_launch.sh instead.
 sed -i "/tls_dist_thresh/c\    tls_dist_thresh: 8.0" $configyaml
 sed -i "/time_offset_lidar_to_imu/c\    time_offset_lidar_to_imu: 0.0" $configyaml

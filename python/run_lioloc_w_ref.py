@@ -67,11 +67,11 @@ def fastlioloc(bagfile, imu_topic, tls_dir, tls_dist_thresh, loc_follow_odom,
     script_path = os.path.join(fastlio_dir, 'shell/loc_launch.sh')
     result = subprocess.run([script_path, configyamlname, bagfile, fastlio_dir, tls_dir, 
                              init_pose_file, msg_start_time, str(tls_dist_thresh),
-                             str(loc_follow_odom).lower(), state_filename, save_dir, str(td_lidar_to_imu)],
+                             str(loc_follow_odom), state_filename, save_dir, str(td_lidar_to_imu)],
                              capture_output=True, text=True)
     logfilename = state_filename.split('.')[0] + '.log'
     logfile = os.path.join(save_dir, logfilename)
-    with open(logfile, 'a') as f:
+    with open(logfile, 'w') as f:
         f.write("Python subprocess stdout:\n{}\n".format(result.stdout))
         f.write("Python subprocess stderr:\n{}\n".format(result.stderr))
         f.write("Python subprocess return code: {}\n".format(result.returncode))
@@ -174,8 +174,8 @@ if __name__ == "__main__":
     parser.add_argument("bagdir", type=str, help="Directory containing rosbags of corrected timestamps")
     parser.add_argument("tls_dir", type=str, help="Directory containing tls data")
     parser.add_argument("outputdir", type=str, help="Output directory")
-    parser.add_argument("--loc_follow_odom", action="store_true", default=False,
-                    help="Enable localization to follow odometry frame.")
+    parser.add_argument("--loc_follow_odom", type=float, default=0.5,
+                    help="localization to follow odometry frame since start for such long.")
     parser.add_argument("--tls_dist_thresh", type=float, default=8.0, help="Threshold on distance to TLS trajectory to abort LIO localization")
     parser.add_argument("--loc_type", type=str, default="", help="Type of localization to run, "
                         "options: front_fwd, front_bwd, back_fwd, back_bwd. If empty, run all.")
@@ -272,7 +272,11 @@ if __name__ == "__main__":
             fastlioloc(bagfile, imu_topic, args.tls_dir, front_seq_tls_dist_thresh, args.loc_follow_odom, 
                        state_filename, save_dir, init_pose_file)
         forwardfronttxt = os.path.join(save_dir, state_filename)
-        frontendtime = times[front_endidx]
+
+        # decrease the front end index to increase the mirror time relative to the reversed rosbag,
+        # so in running fastlioloc, the odometer will initialize before the localizer.
+        # Empirically, odometer often takes 4 lidar frames, i.e., 0.4 s to initialize.
+        frontendtime = times[front_endidx - 5]
         frontendpose, frontendv = read_forward_result(forwardfronttxt, frontendtime)
 
         # backward processing of the front segment
@@ -314,9 +318,11 @@ if __name__ == "__main__":
             save_init_state(backendpose, negativev, times[front_endidx+1], init_pose_file)
             if args.loc_type == 'back_fwd' or len(args.loc_type) == 0:
                 print('Processing the back segment of {} with IMU topic {}'.format(bagfile, imu_topic))
+                # advance the bag start time to let odometer initialize before the localizer. Empirically,
+                # odometer often takes 4 lidar frames, i.e., 0.4 s to initialize.
                 fastlioloc(bagfile, imu_topic, args.tls_dir, args.tls_dist_thresh, args.loc_follow_odom,
                            state_filename, save_dir, init_pose_file,
-                           times[front_endidx+1] - rospy.Duration(0.5)) # advance the bag start time to let odometer initialize before the localizer.
+                           times[front_endidx+1] - rospy.Duration(0.5))
                 # The below two lines are used in generating the bag of the reversed back segment, see whu_tls_regis/reverse_bag/reverse_bag.py
                 # endpose = poses[-1]
                 # reverse_bag2(bagfile, rev_back_bag, lidar_topic, imu_topic, times[front_endidx+1] - buffer, times[-1] + buffer, endpose)

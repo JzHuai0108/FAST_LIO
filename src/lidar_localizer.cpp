@@ -336,7 +336,7 @@ LidarLocalizer::LidarLocalizer():
     frame_map_publisher(nullptr),
     pose_publisher(nullptr) {
     accum_window_ = 5;
-    follow_odom_ = false;
+    follow_odom_ = 0;
     p_imu.reset(new ImuProcess());
     tls_submap_.reset(new pcl::PointCloud<pcl::PointXYZ>());
     num_gicp_iter_ = 10;
@@ -519,6 +519,7 @@ bool LidarLocalizer::propagate(const ros::Time &stamp,
         O_T_I_kf_ = O_T_I;
         M_T_I_kf_ = M_T_I;
         M_T_O_ = M_T_I_kf_ * O_T_I_kf_.inverse();
+        init_state_stamp_ = statestamp_;
     } else {
         Eigen::Affine3d O_T_I(Eigen::Translation3d(odom_state.pos) * odom_state.rot);
         Eigen::Affine3d Ip_T_I = O_T_I_kf_.inverse() * O_T_I;
@@ -539,9 +540,12 @@ bool LidarLocalizer::propagate(const ros::Time &stamp,
     map_state.ba = odom_state.ba;
     map_state.grav = M_T_O_.rotation() * odom_state.grav;
 
-    // if the frontend odometer may drift badly at some points,
-    // then it is better to have the localizer maintain itself by commenting change_x out.
-    if (follow_odom_) {
+    // if we use odometer increment pose and the time from start is less than 2 sec, then we use the odometer derived state;
+    // otherwise, we remain the localizer's state.
+    // Following odom means obtaining all poses using odometer increments.
+    // Limiting change_x to the start of the program makes the localizer mostly independent of the odometer which
+    // may drift badly at some points.
+    if (follow_odom_ > 0.0 && stamp - init_state_stamp_ < ros::Duration(follow_odom_)) {
         kf_.change_x(map_state);
     }
     statestamp_ = stamp;
@@ -638,7 +642,8 @@ void LidarLocalizer::refinePoseByGICP(PointCloudXYZI::Ptr feats_undistort, doubl
     ROS_INFO("GICP time: %.3f ms", duration.count() / 1000.0);
 
     // update kf state
-    if (dp < 0.7) {
+    double dp_tol = 0.3;
+    if (dp < dp_tol) {
         auto map_state = kf_.get_x();
         Eigen::Affine3d M_T_L_g(tls_T_lidar.cast<double>());
         Eigen::Affine3d M_T_I_g = M_T_L_g * I_T_L.inverse();
@@ -647,7 +652,7 @@ void LidarLocalizer::refinePoseByGICP(PointCloudXYZI::Ptr feats_undistort, doubl
         M_T_O_ = M_T_I_kf_ * O_T_I_kf_.inverse();
         kf_.change_x(map_state);
     } else {
-        ROS_WARN_STREAM("Disregard GICP result as it deviates too much from manual init pose.");
+        ROS_WARN_STREAM("Disregard GICP result as it deviates in dp " << dp << " > " << dp_tol << " from manual init pose.");
     }
 }
 

@@ -874,7 +874,7 @@ private:
 
     LidarLocalizer lidar_localizer;
     int loc_accum_window;
-    bool loc_follow_odom;
+    double loc_follow_odom;
 
 public:
 
@@ -918,7 +918,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
     nh.param<int>("odom_mode", odom_mode, 0);
     nh.param<int>("loc_accum_window", loc_accum_window, 5);
-    nh.param<bool>("loc_follow_odom", loc_follow_odom, false);
+    nh.param<double>("loc_follow_odom", loc_follow_odom, 0.0);
 
     nh.param<std::string>("publish/output_ref_frame", output_ref_frame, "lidar");
     nh.param<bool>("publish/show_submap", show_submap, false);
