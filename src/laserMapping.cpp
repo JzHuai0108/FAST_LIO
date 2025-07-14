@@ -985,7 +985,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
     p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
-    p_imu->stationarystart_ = stationary_start;
+    p_imu->stationary_start_ = stationary_start;
 
     if (output_ref_frame == "lidar") {
         B_T_S = Pose3d(Lidar_R_wrt_IMU, Lidar_T_wrt_IMU);

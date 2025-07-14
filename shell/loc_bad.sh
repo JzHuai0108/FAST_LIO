@@ -5,21 +5,21 @@
 # the default acc_cov: 0.01, gyr_cov: 0.002 for both mti3dk and x36d imu.
 
 # Problematic sequences
-# 2025 May 6 edited
+# 2025 Jul 14 edited
 # case, symptom, solution, status
-# 1105/2/front/bwd, traj at the end diff much from fwd traj, cull end seconds?
+# 1105/2/front/bwd, traj at the end diff much from fwd traj, bg=(0,0,0) at start, OK
+# 1105/3/front/fwd, a small jump at bump, initialize localizer at each step with odometry increment through traj, OK
 # 1105/4/front/bwd, some jumps, initialize localizer at each step with odometry increment through traj, OK
 # 1105_aft/4/front/fwd, a big jump, initialize localizer at each step with odometry increment through traj, OK
-# 1208/4/back/fwd, huge drift, initialize localizer at each step with odometry increment for 1 second, OK
-# 1213/4/back/fwd, huge drift, initialize localizer at each step with odometry increment for 1 second, OK
-# 1213/5/back/fwd, huge drift, initialize localizer at each step with odometry increment for 1 second, OK
-# 0113/2/back/fwd, huge drift, initialize localizer at each step with odometry increment for 1 second, OK
-# 0115/3/back/fwd, huge drift, initialize localizer at each step with odometry increment for 1 second, OK
-# 0116_eve/5/back/fwd, huge drift, initialize localizer at each step with odometry increment for 1 second, OK
-# 0123/3/back/fwd, huge drift, initialize localizer at each step with odometry increment for 1 second, OK
+# 1213/2/back/bwd, slip at the start, fix the initial pose for back segment forward mode, OK
+# 1213/4/front/fwd, slip at the start, fix the initial pose for front segment forward mode, OK
+# 1213/4/back/fwd + bwd, large velocity diff, initialize localizer at each step with odometry increment through traj, OK
+# 0116/2/front/fwd, slip at the start, fix the initial pose for front segment forward mode, OK
+# 0116/2/front/fwd and bwd, large velocity diff, initialize localizer at each step with odometry increment through traj, OK
 
-
-# Also, check the line "The map state at xx is much earlier than odometry state at xx, but we have to init anyway"
+# case, symptom, solution, status
+# 1208/4/back/fwd, huge drift, initialize localizer at each step with odometry increment for 0.5 second, OK
+# 0123/3/back/fwd, huge drift, initialize localizer at each step with odometry increment for 0.5 second, OK
 
 # 2025 Jan 3 edited
 # date, bad case, solution, status
@@ -36,8 +36,6 @@ source $FASTLIO_WS/devel/setup.bash
 
 fastlio_dir=$FASTLIO_WS/src/FAST_LIO
 script=$fastlio_dir/python/run_lioloc_w_ref.py
-
-
 
 run_loc() {
 for i in "${!bagnames[@]}"; do
@@ -65,44 +63,34 @@ outputdir=/media/$USER/BackupPlus/jhuai/results/front_back_snapshots
 bagdir=/media/$USER/My_Book/jhuai/data/zip
 
 bagnames=(
-    20231105/data4.bag
-    20231105_aft/data4.bag
-    20231208/data4.bag
-    20231213/data4.bag
-    20231213/data5.bag
-    20240113/data2.bag
-    20240115/data3.bag
-    20240116_eve/data5.bag
+    20231105/data2.bag # front_bwd
+    20231105/data3.bag # front_fwd 100
+    20231105/data4.bag # front_fwd 1e6
+    20231105/data4.bag # front_bwd 1e6
+    20231105_aft/data4.bag # front_fwd 1e6
+    20231213/data2.bag # back_bwd 1e6
+    20231213/data4.bag # back_fwd 1e6
+    20231213/data4.bag # back bwd 1e6
+    20240116/data2.bag # back fwd 1e6
+    20240116/data2.bag # back bwd 1e6
 )
 
-loctypes=(front_bwd
+loctypes=(
+front_bwd
 front_fwd
+front_fwd
+front_bwd
+front_fwd
+back_bwd
 back_fwd
+back_bwd
 back_fwd
-back_fwd
-back_fwd
-back_fwd
-back_fwd
+back_bwd
 )
 
-follow_odom=(1e6 1e6 1 1 1 1 1 1 1)
+follow_odom=(
+0.5
+100 1e6 1e6
+1e6 1e6 1e6 1e6 1e6 1e6)
 
 run_loc
-
-
-tls_dir=/media/$USER/MyBookDuo/jhuai/data/homebrew/whu_tls_1030
-reftraj_dir=/media/$USER/MyBookDuo/jhuai/results/ref_trajs_all
-outputdir=/media/$USER/MyBookDuo/jhuai/results/front_back_snapshots
-bagdir=/media/$USER/MyBookDuo/jhuai/data/zip
-
-bagnames=(
-    20240123/data3.bag
-)
-
-loctypes=(back_fwd
-)
-
-follow_odom=(1)
-
-run_loc
-

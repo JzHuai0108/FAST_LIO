@@ -65,7 +65,7 @@ class ImuProcess
   V3D cov_bias_acc;
   double first_lidar_time;
   double G_m_s2;
-  bool stationarystart_ = true;
+  bool stationary_start_ = true;
 
  private:
   void IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
