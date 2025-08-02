@@ -123,19 +123,21 @@ def load_imu_data(bagfile, topic):
     bag = rosbag.Bag(bagfile, 'r')
     timestamps = []
     messages = []
+    logtimes = []
     for topic, msg, t in bag.read_messages(topics=[topic]):
         timestamps.append(msg.header.stamp.to_sec())
         messages.append(msg)
+        logtimes.append(t.to_sec())
     bag.close()
-    return timestamps, messages
+    return timestamps, messages, logtimes
 
 
-def save_txt(file_path, original_timestamps, smoothed_timestamps_top, smoothed_timestamps_bottom):
+def save_txt(file_path, original_timestamps, smoothed_timestamps_top, smoothed_timestamps_bottom, logtimes):
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, 'w') as f:
-        f.write('#original smoothed_top smoothed_bottom\n')
-        for orig, top, bottom in zip(original_timestamps, smoothed_timestamps_top, smoothed_timestamps_bottom):
-            f.write(f"{orig:.9f} {top:.9f} {bottom:.9f}\n")
+        f.write('#header.stamp smoothed_top smoothed_bottom log_time\n')
+        for orig, top, bottom, rt in zip(original_timestamps, smoothed_timestamps_top, smoothed_timestamps_bottom, logtimes):
+            f.write(f"{orig:.9f} {top:.9f} {bottom:.9f} {rt:.9f}\n")
 
 
 def save_imu_to_bag(bagfile, new_topic, messages, smoothed_timestamps):
@@ -162,14 +164,14 @@ if __name__ == "__main__":
     topic = sys.argv[2]
     # With preliminary tests, it seems smooth_imu_timestamps_top has much fewer inconsistency than
     # smooth_imu_timestamps_bottom, 0.0017 vs 0.035.
-    timestamps, messages = load_imu_data(bagfile, topic)
+    timestamps, messages, logtimes = load_imu_data(bagfile, topic)
     smoothed_timestamps_bottom = smooth_imu_timestamps_bottom(timestamps, 0.0025)
     smoothed_timestamps_top = smooth_imu_timestamps_top(timestamps, 0.0025)
 
     dirname = os.path.dirname(bagfile)
     basename = os.path.splitext(os.path.basename(bagfile))[0]
     imu_file = os.path.join(dirname, topic.strip('/').replace('/', '_') + "_smoothed.txt")
-    save_txt(imu_file, timestamps, smoothed_timestamps_top, smoothed_timestamps_bottom)
+    save_txt(imu_file, timestamps, smoothed_timestamps_top, smoothed_timestamps_bottom, logtimes)
 
     new_topic = topic + '_dejit_top'
     save_imu_to_bag(bagfile, new_topic, messages, smoothed_timestamps_top)
