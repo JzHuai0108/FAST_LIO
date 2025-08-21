@@ -10,7 +10,7 @@
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloudXYZI;
 
-enum LID_TYPE{AVIA = 1, VELO16, OUST64, HESAI, LIVOX_ROS, HOVERMAP_ST, HESAI32_XIANGYIN}; //{1, 2, 3}
+enum LID_TYPE{AVIA = 1, VELO16, OUST64, HESAI, LIVOX_ROS, HOVERMAP_ST, HESAI32_XIANGYIN=7, HESAI_XY}; //{1, 2, 3}
 enum TIME_UNIT{SEC = 0, MS = 1, US = 2, NS = 3};
 enum Feature{Nor, Poss_Plane, Real_Plane, Edge_Jump, Edge_Plane, Wire, ZeroPoint};
 enum Surround{Prev, Next};
@@ -50,6 +50,24 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(hesai_ros::Point,
     (float, z, z)
     (float, intensity, intensity)
     (double, timestamp, timestamp)
+    (std::uint16_t, ring, ring)
+)
+
+namespace hesai_ros {
+  struct XYPoint { // xiangyin
+      PCL_ADD_POINT4D;
+      float intensity;
+      float time;
+      std::uint16_t ring;
+  };
+}  // namespace hesai_ros
+
+POINT_CLOUD_REGISTER_POINT_STRUCT(hesai_ros::XYPoint,
+    (float, x, x)
+    (float, y, y)
+    (float, z, z)
+    (float, intensity, intensity)
+    (float, time, time)
     (std::uint16_t, ring, ring)
 )
 
@@ -148,6 +166,7 @@ class Preprocess
   private:
   void avia_handler(const livox_ros_driver2::CustomMsg::ConstPtr &msg);
   void hesai_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
+  void hesai_xy_handler(const sensor_msgs::PointCloud2::ConstPtr &msg); // xiangyin
   void hesai32_xiangyin_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void hovermap_st_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void livox_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
