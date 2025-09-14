@@ -62,7 +62,7 @@
 #include <rosbag/view.h>
 #include <boost/foreach.hpp>
 
-#include <livox_ros_driver2/CustomMsg.h>
+#include <fast_lio/CustomMsg.h>
 
 #include "aggregate_pcds.hpp"
 #include "dist_checkup.h"
@@ -312,7 +312,7 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
 
 double timediff_lidar_wrt_imu = 0.0;
 bool   timediff_set_flg = false;
-void livox_pcl_cbk(const livox_ros_driver2::CustomMsg::ConstPtr &msg) 
+void livox_pcl_cbk(const fast_lio::CustomMsg::ConstPtr &msg) 
 {
     mtx_buffer.lock();
     double preprocess_start_time = omp_get_wtime();
@@ -715,6 +715,34 @@ void publish_path(const ros::Publisher pubPath)
     }
 }
 
+Eigen::Matrix3d compute_COV(pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud){
+    Eigen::Vector4d pcaCentroid;
+    pcl::compute3DCentroid(*cloud, pcaCentroid);
+    Eigen::Matrix3d covariance;
+    pcl::computeCovarianceMatrixNormalized(*cloud, pcaCentroid, covariance);
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigen_solver(covariance, Eigen::ComputeEigenvectors);
+    Eigen::Matrix3d eigenVectorsPCA = eigen_solver.eigenvectors();
+    Eigen::Vector3d eigenValuesPCA = eigen_solver.eigenvalues();
+
+    Eigen::MatrixXd dz_cov_mat = Eigen::MatrixXd::Identity(3,3);
+    dz_cov_mat(0,0) = 0.001;
+    Eigen::Matrix3d cov_mat = eigenVectorsPCA*dz_cov_mat*eigenVectorsPCA.transpose();
+
+    // // normal*normal^T
+    // cov_mat = eigenVectorsPCA.col(0)*eigenVectorsPCA.col(0).transpose();
+
+    return cov_mat;
+}
+
+
+PointCloudXYZI::Ptr NearPoint(new PointCloudXYZI(100000, 1));
+PointCloudXYZI::Ptr corr_NearPoint(new PointCloudXYZI(100000, 1));
+std::vector<M3D> normMlist(100000);
+std::vector<M3D> corr_normMlist(100000);
+const int Ndim = 12;
+int min_effct_feat_num = 10;
+int dist_type = 2;
+double range_th = 1.0;
 double icp_dist_thresh = 0.9; // The larger, the less points will be selected for ICP matching.
 double est_plane_thresh = 0.1; // The larger, the more surfels will be accepted as planes.
 
@@ -722,7 +750,8 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 {
     double match_start = omp_get_wtime();
     laserCloudOri->clear(); 
-    corr_normvect->clear(); 
+    corr_normvect->clear();
+    corr_NearPoint->clear();
     total_residual = 0.0; 
 
     /** closest surface search and residual computation **/
@@ -742,6 +771,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         point_world.y = p_global(1);
         point_world.z = p_global(2);
         point_world.intensity = point_body.intensity;
+        // point_world.normal_x = point_body.normal_x;  // RCS. jhuai: is this needed?
 
         vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
 
@@ -760,17 +790,81 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         point_selected_surf[i] = false;
         if (esti_plane(pabcd, points_near, float(est_plane_thresh)))
         {
-            float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3);
-            float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
+             if(true){
+                float pd2 =sqrt((points_near[0].x-point_world.x)*(points_near[0].x-point_world.x)
+                            + (points_near[0].y-point_world.y)*(points_near[0].y-point_world.y)
+                            + (points_near[0].z-point_world.z)*(points_near[0].z-point_world.z));
+                float ss = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
+                if (ss > icp_dist_thresh){
+                    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
+                    for(int ii=0;ii<points_near.size();ii++){
+                        pcl::PointXYZ point = { points_near[ii].x, points_near[ii].y, points_near[ii].z};
+                        cloud->insert(cloud->begin() + ii, point);
+                    }
+                    Eigen::Matrix3d cov_ref = Eigen::MatrixXd::Identity(3,3);
+                    cov_ref = compute_COV(cloud);
+                    // std::cout<<"cov_ref:\n"<< cov_ref <<std::endl;
+                    // std::cout<<"normal:\n"<<compute_normal(cloud)<<std::endl;
+                    // std::cout<<pabcd<<std::endl;
 
-            if (s > icp_dist_thresh)
-            {
-                point_selected_surf[i] = true;
-                normvec->points[i].x = pabcd(0);
-                normvec->points[i].y = pabcd(1);
-                normvec->points[i].z = pabcd(2);
-                normvec->points[i].intensity = pd2;
-                res_last[i] = abs(pd2);
+                    double time4 = ros::Time::now().toSec();
+                    // PointType point0;
+                    // std::vector<int> knearID(5);
+                    // PointVector knearPoint(5);
+                    // std::vector<float> knearDist(5);
+                    // point0.x = p_body[0]; point0.y = p_body[1]; point0.z = p_body[2];
+                    // // std::cout<<  point0.x <<" "<< point0.y <<" "<< point0.z << std::endl;
+                    // mykdtree.Nearest_Search(point0, 5, knearPoint, knearDist);
+                    // // mykdtree.Radius_Search(point0, 1, knearPoint)
+                    // cloud->clear();
+                    // for(int ii=0;ii<knearPoint.size();ii++){
+                    //     // std::cout<<  knearPoint[ii].x <<" "<< knearPoint[ii].y <<" "<< knearPoint[ii].z << std::endl;
+                    //     pcl::PointXYZ point = {  knearPoint[ii].x, knearPoint[ii].y, knearPoint[ii].z};
+                    //     cloud->insert(cloud->begin() + ii, point);
+                    // }
+                    // std::cout << "kdtree2" << (ros::Time::now().toSec() - time4)*1000 << std::endl;
+
+                    // std::cout<<"\n";
+                    Eigen::Matrix3d cov_data = 0.1*Eigen::MatrixXd::Identity(3,3);
+                    // cov_data = compute_COV(cloud);
+                    // std::cout<<"cov_data:\n"<< cov_data <<std::endl;
+                    normMlist[i] = Eigen::MatrixXd::Identity(3,3);
+                    normMlist[i] = (cov_ref + (s.rot*s.offset_R_L_I).toRotationMatrix()*cov_data*(s.rot*s.offset_R_L_I).toRotationMatrix().transpose()).inverse();
+
+                    point_selected_surf[i] = true;
+                    pointSearchSqDis[0]+=0.0000001;
+                    pointSearchSqDis[1]+=0.0000001;
+                    pointSearchSqDis[2]+=0.0000001;
+                    double sw = 1/pointSearchSqDis[0]+1/pointSearchSqDis[1]+1/pointSearchSqDis[2];
+                    NearPoint->points[i].x = (points_near[0].x/pointSearchSqDis[0]+points_near[1].x/pointSearchSqDis[1]+points_near[2].x/pointSearchSqDis[2])/sw;
+                    NearPoint->points[i].y = (points_near[0].y/pointSearchSqDis[0]+points_near[1].y/pointSearchSqDis[1]+points_near[2].y/pointSearchSqDis[2])/sw;
+                    NearPoint->points[i].z = (points_near[0].z/pointSearchSqDis[0]+points_near[1].z/pointSearchSqDis[1]+points_near[2].z/pointSearchSqDis[2])/sw;
+                    // NearPoint->points[i].x = points_near[0].x;
+                    // NearPoint->points[i].y = points_near[0].y;
+                    // NearPoint->points[i].z = points_near[0].z;
+                    // NearPoint->points[i].normal_x = points_near[0].normal_x; // jhuai: is this needed?
+                    normvec->points[i].x = pabcd(0);
+                    normvec->points[i].y = pabcd(1);
+                    normvec->points[i].z = pabcd(2);
+                    normvec->points[i].intensity = pd2;
+                    res_last[i] = abs(pd2);
+                }
+            }
+            else{
+                float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3);
+                float ss = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
+                if (ss > 0.9){
+                    normMlist[i] = Eigen::MatrixXd::Identity(3,3);
+                    point_selected_surf[i] = true;
+                    NearPoint->points[i].x = points_near[0].x;
+                    NearPoint->points[i].y = points_near[0].y;
+                    NearPoint->points[i].z = points_near[0].z;
+                    normvec->points[i].x = pabcd(0);
+                    normvec->points[i].y = pabcd(1);
+                    normvec->points[i].z = pabcd(2);
+                    normvec->points[i].intensity = pd2;
+                    res_last[i] = abs(pd2);
+                }
             }
         }
     }
@@ -783,12 +877,14 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         {
             laserCloudOri->points[effct_feat_num] = feats_down_body->points[i];
             corr_normvect->points[effct_feat_num] = normvec->points[i];
+            corr_NearPoint->points[effct_feat_num] = NearPoint->points[i];
+            corr_normMlist[effct_feat_num] = normMlist[i];
             total_residual += res_last[i];
             effct_feat_num ++;
         }
     }
 
-    if (effct_feat_num < 1)
+    if (effct_feat_num < min_effct_feat_num)
     {
         ekfom_data.valid = false;
         ROS_WARN("No Effective Points! \n");
@@ -803,35 +899,93 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     ekfom_data.h_x = MatrixXd::Zero(effct_feat_num, 12); //23
     ekfom_data.h.resize(effct_feat_num);
 
-    for (int i = 0; i < effct_feat_num; i++)
-    {
-        const PointType &laser_p  = laserCloudOri->points[i];
-        V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
-        M3D point_be_crossmat;
-        point_be_crossmat << SKEW_SYM_MATRX(point_this_be);
-        V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I;
-        M3D point_crossmat;
-        point_crossmat<<SKEW_SYM_MATRX(point_this);
-
-        /*** get the normal vector of closest surface/corner ***/
-        const PointType &norm_p = corr_normvect->points[i];
-        V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
-
-        /*** calculate the Measuremnt Jacobian matrix H ***/
-        V3D C(s.rot.conjugate() *norm_vec);
-        V3D A(point_crossmat * C);
-        if (extrinsic_est_en)
+    if(true){
+        ekfom_data.h_x = MatrixXd::Zero(3*effct_feat_num, 12); //23
+        ekfom_data.h.resize(3*effct_feat_num);
+        for (int i = 0; i < effct_feat_num; i++)
         {
-            V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() * C); //s.rot.conjugate()*norm_vec);
-            ekfom_data.h_x.block<1, 12>(i,0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
-        }
-        else
-        {
-            ekfom_data.h_x.block<1, 12>(i,0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-        }
+            const PointType &laser_p  = laserCloudOri->points[i];
+            V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
+            M3D point_be_crossmat;
+            point_be_crossmat << SKEW_SYM_MATRX(point_this_be);
+            V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I;
+            M3D point_crossmat;
+            point_crossmat<<SKEW_SYM_MATRX(point_this);
+            V3D point_gthis = s.rot * point_this + s.pos;
 
-        /*** Measuremnt: distance to the closest surface/corner ***/
-        ekfom_data.h(i) = -norm_p.intensity;
+            /*** get the normal vector of closest surface/corner ***/
+            const PointType &norm_p = corr_normvect->points[i];
+            V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
+
+            Eigen::MatrixXd H = Eigen::MatrixXd::Zero(3, Ndim);
+            M3D H_p = Eigen::MatrixXd::Identity(3,3);
+            M3D H_q = -1*s.rot.toRotationMatrix()*skew_sym_mat(V3D(point_this));
+            M3D H_q_b_r = -1*s.rot.toRotationMatrix() * s.offset_R_L_I.toRotationMatrix()* skew_sym_mat(V3D(point_this_be));
+            M3D H_l_b_r = s.rot.toRotationMatrix();
+            H.block<3, 3>(0, 0) = H_p;
+            H.block<3, 3>(0, 3) = H_q;
+            H.block<3, 3>(0, 6) = H_q_b_r;
+            H.block<3, 3>(0, 9) = H_l_b_r;
+
+            // normM = norm_vec*norm_vec.transpose();
+            Eigen::MatrixXd normM = Eigen::MatrixXd::Identity(3,3); 
+            if(dist_type==1){
+                normM = norm_vec*norm_vec.transpose();
+            }
+            else if(dist_type==2){
+                normM = corr_normMlist[i];
+            }
+            // residual and H
+            double Range_wgt = 1.0;
+            Range_wgt = exp(-point_this_be.norm()/range_th);
+            V3D r = Range_wgt * normM * (V3D(corr_NearPoint->points[i].x,corr_NearPoint->points[i].y,corr_NearPoint->points[i].z) - point_gthis);
+            H = Range_wgt * normM * H;
+            if (extrinsic_est_en){
+                ekfom_data.h_x.block<3, Ndim>(3*i, 0) =  H;
+                ekfom_data.h.block<3, 1>(3*i, 0) =  r;
+            }
+            else{
+                H.block<3, 3>(0, 6) = Eigen::Matrix3d::Zero();
+                H.block<3, 3>(0, 9) = Eigen::Matrix3d::Zero();
+                ekfom_data.h_x.block<3, Ndim>(3*i, 0) =  H;
+                ekfom_data.h.block<3, 1>(3*i, 0) =  r;
+            }
+        }
+    }
+    else{
+        ekfom_data.h_x = MatrixXd::Zero(1*effct_feat_num, 12); //23
+        ekfom_data.h.resize(1*effct_feat_num);
+        for (int i = 0; i < effct_feat_num; i++)
+        {
+            const PointType &laser_p  = laserCloudOri->points[i];
+            V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
+            M3D point_be_crossmat;
+            point_be_crossmat << SKEW_SYM_MATRX(point_this_be);
+            V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I;
+            M3D point_crossmat;
+            point_crossmat<<SKEW_SYM_MATRX(point_this);
+            V3D point_gthis = s.rot * point_this + s.pos;
+
+            /*** get the normal vector of closest surface/corner ***/
+            const PointType &norm_p = corr_normvect->points[i];
+            V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
+
+            /*** calculate the Measuremnt Jacobian matrix H ***/
+            V3D C(s.rot.conjugate() *norm_vec);
+            V3D A(point_crossmat * C);
+            if (extrinsic_est_en)
+            {
+                V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() * C); //s.rot.conjugate()*norm_vec);
+                ekfom_data.h_x.block<1, 12>(i,0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
+            }
+            else
+            {
+                ekfom_data.h_x.block<1, 12>(i,0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+            }
+
+            /*** Measuremnt: distance to the closest surface/corner ***/
+            ekfom_data.h(i) = -norm_p.intensity;
+        }
     }
     solve_time += omp_get_wtime() - solve_start_;
 }
@@ -887,7 +1041,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<bool>("publish/scan_publish_en",scan_pub_en, true);
     nh.param<bool>("publish/dense_publish_en",dense_pub_en, true);
     nh.param<bool>("publish/scan_bodyframe_pub_en",scan_body_pub_en, true);
-    nh.param<int>("max_iteration",NUM_MAX_ITERATIONS,4);
+    nh.param<int>("mapping/max_iteration",NUM_MAX_ITERATIONS,4);
     nh.param<string>("bagfile", bagfile, "");
     nh.param<string>("map_file_path",map_file_path,"");
     nh.param<string>("common/lid_topic",lid_topic,"/livox/lidar");
@@ -895,9 +1049,9 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<bool>("common/time_sync_en", time_sync_en, false);
     nh.param<double>("common/time_offset_lidar_to_imu", time_diff_lidar_to_imu, 0.0);
     nh.param<double>("filter_size_corner",filter_size_corner_min,0.5);
-    nh.param<double>("filter_size_surf",filter_size_surf_min,0.5);
-    nh.param<double>("filter_size_map",filter_size_map_min,0.5);
-    nh.param<double>("cube_side_length",cube_len,200);
+    nh.param<double>("mapping/filter_size_surf",filter_size_surf_min,0.5);
+    nh.param<double>("mapping/filter_size_map",filter_size_map_min,0.5);
+    nh.param<double>("mapping/cube_side_length",cube_len,200);
     nh.param<float>("mapping/det_range",DET_RANGE,300.f);
     nh.param<double>("mapping/fov_degree",fov_deg,180);
     nh.param<double>("mapping/gyr_cov",gyr_cov,0.1);
@@ -909,9 +1063,9 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<int>("preprocess/scan_line", p_pre->N_SCANS, 16);
     nh.param<int>("preprocess/timestamp_unit", p_pre->time_unit, US);
     nh.param<int>("preprocess/scan_rate", p_pre->SCAN_RATE, 10);
-    nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
+    nh.param<int>("mapping/point_filter_num", p_pre->point_filter_num, 2);
     nh.param<bool>("feature_extract_enable", p_pre->feature_enabled, false);
-    nh.param<bool>("runtime_pos_log_enable", runtime_pos_log, 0);
+    nh.param<bool>("publish/runtime_pos_log_enable", runtime_pos_log, 0);
     nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est_en, true);
     nh.param<bool>("pcd_save/pcd_save_en", pcd_save_en, false);
     nh.param<bool>("publish/publish_cloud_in_imu_frame", publish_cloud_in_imu_frame, true);
@@ -943,6 +1097,10 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<vector<double>>("mapping/init_world_rpy_imu", init_world_rpy_imu, vector<double>());
     nh.param<double>("mapping/icp_dist_thresh", icp_dist_thresh, 0.9);
     nh.param<double>("mapping/est_plane_thresh", est_plane_thresh, 0.1);
+    nh.param<int>("mapping/min_effct_feat_num", min_effct_feat_num, 10);
+    nh.param<int>("mapping/dist_type", dist_type, 2);
+    nh.param<double>("mapping/range_th", range_th, 1.0);
+
     init_world_t_imu_vec = V3D(init_world_t_imu[0], init_world_t_imu[1], init_world_t_imu[2]);
     init_world_R_imu = EulerToRotM(init_world_rpy_imu);
     msg_start_time_ros = parseTimeStr(msg_start_time);
@@ -1017,9 +1175,9 @@ int initializeSystem(ros::NodeHandle &nh) {
 
     /*** ROS subscribe initialization ***/
     sub_pcl = p_pre->lidar_type == AVIA ? \
-        nh.subscribe(lid_topic, 200000, livox_pcl_cbk) : \
-        nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
-    sub_imu = nh.subscribe(imu_topic, 200000, imu_cbk);
+        nh.subscribe(lid_topic, 200000, livox_pcl_cbk, ros::TransportHints().tcpNoDelay()) : \
+        nh.subscribe(lid_topic, 200000, standard_pcl_cbk, ros::TransportHints().tcpNoDelay());
+    sub_imu = nh.subscribe(imu_topic, 200000, imu_cbk, ros::TransportHints().tcpNoDelay());
     pubLaserCloudFull = nh.advertise<sensor_msgs::PointCloud2>
             ("/cloud_registered", 100000);
     pubLaserCloudFull_body = nh.advertise<sensor_msgs::PointCloud2>
@@ -1342,12 +1500,12 @@ void saveMap() {
         fclose(fp2);
     }
 
-    if (pcd_save_en && pcd_save_interval == 1) {
-        const std::string pcd_dir = state_log_dir + "/PCD";
-        std::vector<std::pair<std::string, std::string>> pcd_pose_pairs;
-        pcd_pose_pairs.emplace_back(pcd_dir, pos_log_filename);
-        aggregatePointCloudsWithPose(pcd_pose_pairs, state_log_dir, 0.0, 0.0);
-    }
+    // if (pcd_save_en && pcd_save_interval == 1) {
+    //     const std::string pcd_dir = state_log_dir + "/PCD";
+    //     std::vector<std::pair<std::string, std::string>> pcd_pose_pairs;
+    //     pcd_pose_pairs.emplace_back(pcd_dir, pos_log_filename);
+    //     aggregatePointCloudsWithPose(pcd_pose_pairs, state_log_dir, 0.0, 0.0);
+    // }
 }
 };
 
@@ -1362,7 +1520,7 @@ int main(int argc, char** argv) {
     ros::Rate rate(500);
     ros::Publisher lidar_publisher;
     if (odometer.is_livox_custom_msg()) {
-        lidar_publisher = nh.advertise<livox_ros_driver2::CustomMsg>(lid_topic, 100);
+        lidar_publisher = nh.advertise<fast_lio::CustomMsg>(lid_topic, 100);
     } else {
         lidar_publisher = nh.advertise<sensor_msgs::PointCloud2>(lid_topic, 100);
     }
@@ -1393,7 +1551,7 @@ int main(int argc, char** argv) {
     foreach(rosbag::MessageInstance const m, view) {
         if (m.getTopic() == lid_topic) {
             if (odometer.is_livox_custom_msg()) {
-                livox_ros_driver2::CustomMsg::ConstPtr lidar_msg = m.instantiate<livox_ros_driver2::CustomMsg>();
+                fast_lio::CustomMsg::ConstPtr lidar_msg = m.instantiate<fast_lio::CustomMsg>();
                 if (lidar_msg->header.stamp < min_time_ros || lidar_msg->header.stamp > max_time_ros) {
                     continue;
                 }

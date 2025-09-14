@@ -118,30 +118,31 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 
         N ++;
     }
     state_ikfom init_state = kf_state.get_x();
-    if (stationary_start_) {
-        init_state.grav = S2(- mean_acc / mean_acc.norm() * G_m_s2);
-        init_state.bg  = mean_gyr;
-    } else {
-        const auto& imumsg = meas.imu.back();
-        double norm2 =
-            imumsg->orientation.w * imumsg->orientation.w +
-            imumsg->orientation.x * imumsg->orientation.x +
-            imumsg->orientation.y * imumsg->orientation.y +
-            imumsg->orientation.z * imumsg->orientation.z;
-        bool has_orient = (norm2 > 0.8 && norm2 < 1.2);
-        if (has_orient) {
-            init_state.grav = S2(Eigen::Vector3d(0, 0, -1) * G_m_s2);
-            Eigen::Quaterniond q_WS = Eigen::Quaterniond(meas.imu.back()->orientation.w,
-                                                        meas.imu.back()->orientation.x, meas.imu.back()->orientation.y,
-                                                        meas.imu.back()->orientation.z);
-            // state_time_ = meas.lidar_end_time;
-            // imu_orientation_ = q_WS;
-            std::cout << "IMU back time " << meas.imu.back()->header.stamp << " lidar end time "
-                    << std::setprecision(15) << meas.lidar_end_time << " diff "
-                    << meas.imu.back()->header.stamp.toSec() - meas.lidar_end_time << std::endl;
-            init_state.rot = q_WS;
 
-            init_state.bg  = V3D(0, 0, 0);
+    const auto& imumsg = meas.imu.back();
+    double norm2 =
+        imumsg->orientation.w * imumsg->orientation.w +
+        imumsg->orientation.x * imumsg->orientation.x +
+        imumsg->orientation.y * imumsg->orientation.y +
+        imumsg->orientation.z * imumsg->orientation.z;
+    bool has_orient = (norm2 > 0.8 && norm2 < 1.2);
+    if (has_orient) {
+        init_state.grav = S2(Eigen::Vector3d(0, 0, -1) * G_m_s2);
+        Eigen::Quaterniond q_WS = Eigen::Quaterniond(meas.imu.back()->orientation.w,
+                                                    meas.imu.back()->orientation.x, meas.imu.back()->orientation.y,
+                                                    meas.imu.back()->orientation.z);
+        // state_time_ = meas.lidar_end_time;
+        // imu_orientation_ = q_WS;
+        std::cout << "IMU back time " << meas.imu.back()->header.stamp << " lidar end time "
+                << std::setprecision(15) << meas.lidar_end_time << " diff "
+                << meas.imu.back()->header.stamp.toSec() - meas.lidar_end_time << std::endl;
+        init_state.rot = q_WS;
+
+        init_state.bg  = V3D(0, 0, 0);
+    } else {
+        if (stationary_start_) {
+            init_state.grav = S2(- mean_acc / mean_acc.norm() * G_m_s2);
+            init_state.bg  = mean_gyr;
         } else {
             init_state.grav = S2(- mean_acc / mean_acc.norm() * G_m_s2);
             init_state.bg = V3D(0, 0, 0);

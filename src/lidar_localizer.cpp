@@ -345,7 +345,9 @@ LidarLocalizer::LidarLocalizer():
 
 LidarLocalizer::~LidarLocalizer() {
     statestream_.close();
-    std::cout << "Loc to prior map results saved to " << statefile_ << std::endl;
+    if (initialized_) {
+        std::cout << "Loc to prior map results saved to " << statefile_ << std::endl;
+    }
     localizer_ptr = nullptr;
     path_publisher = nullptr;
     frame_map_publisher = nullptr;
