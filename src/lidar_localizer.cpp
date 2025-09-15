@@ -141,8 +141,7 @@ void make_log_dirs(const std::string& state_log_dir) {
             std::cout << "Created directory: " << state_log_dir << std::endl;
         }
 
-        // Create the "PCD" subdirectory
-        std::string pcd_dir = state_log_dir + "/PCD";
+        std::string pcd_dir = state_log_dir + "/pcd";
         if (!fs::exists(pcd_dir)) {
             fs::create_directories(pcd_dir);
             std::cout << "Created subdirectory: " << pcd_dir << std::endl;
@@ -984,7 +983,7 @@ void LidarLocalizer::publish_map_frame(double lidar_end_time)
     //            pcd_index ++;
 
     //            std::stringstream ss;
-    //            std::string all_points_dir = state_log_dir + "/PCD/";
+    //            std::string all_points_dir = state_log_dir + "/pcd/";
     //            ss << std::fixed << std::setprecision(9) << lidar_end_time << ".pcd";
     //            std::string fn = all_points_dir + ss.str();
 

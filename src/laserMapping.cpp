@@ -71,6 +71,7 @@
 
 using namespace std;
 using namespace Eigen;
+namespace fs = std::filesystem;
 
 /*** Time Log Variables ***/
 double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0, kdtree_delete_time = 0.0;
@@ -581,7 +582,7 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
             pcd_index ++;
 
             std::stringstream ss;
-            std::string all_points_dir = state_log_dir + "/PCD/";
+            std::string all_points_dir = state_log_dir + "/pcd/";
             ss << std::fixed << std::setprecision(9) << lidar_end_time << ".pcd";
             std::string fn = all_points_dir + ss.str();
 
@@ -1109,7 +1110,7 @@ int initializeSystem(ros::NodeHandle &nh) {
       cerr << "You have to provide save_dir to make the saving functions work properly." << std::endl;
       return 0;
     } else {
-      make_log_dirs(state_log_dir); // make directories, state_log_dir, and state_log_dir/"PCD"
+      make_log_dirs(state_log_dir); // make directories, state_log_dir, and state_log_dir/"pcd"
     }
     cout << "state log dir: " << state_log_dir << ", state filename: " << state_filename << endl;
     path.header.stamp    = ros::Time::now();
@@ -1501,7 +1502,7 @@ void saveMap() {
     }
 
     // if (pcd_save_en && pcd_save_interval == 1) {
-    //     const std::string pcd_dir = state_log_dir + "/PCD";
+    //     const std::string pcd_dir = state_log_dir + "/pcd";
     //     std::vector<std::pair<std::string, std::string>> pcd_pose_pairs;
     //     pcd_pose_pairs.emplace_back(pcd_dir, pos_log_filename);
     //     aggregatePointCloudsWithPose(pcd_pose_pairs, state_log_dir, 0.0, 0.0);
@@ -1509,7 +1510,6 @@ void saveMap() {
 }
 
 void saveImu(const std::string& bagfile) {
-    namespace fs = std::filesystem;
     fs::path imu_csv = fs::path(state_log_dir) / "imu.csv";
     if (output_ref_frame == "imu") {
         extractAndCompensateImu(bagfile, pos_log_filename, imu_topic, imu_csv.string(), 
@@ -1525,6 +1525,14 @@ void saveImu(const std::string& bagfile) {
 };
 
 int main(int argc, char** argv) {
+    if (argc >= 4) {
+        // Usage: rosrun fast_lio fastlio_mapping [config_file.yaml] [ros1.bag] [output_dir]
+        std::string config_file = argv[1];
+        std::string ros1_bagfile = argv[2];
+        std::string output_dir = argv[3];
+        fs::copy_file(config_file, fs::path(output_dir) / "lio_config.yaml", fs::copy_options::overwrite_existing);
+    }
+
     ros::init(argc, argv, "laserMapping");
     ros::NodeHandle nh;
 

@@ -20,7 +20,7 @@ for i in "${!bagnames[@]}"; do
   save_dir=$result_dir/$bag/$whichend
   echo "bagfile: $bagfile, time offset to be set: $timeoffset"
   echo "save_dir: $save_dir"
-  mkdir -p $save_dir/PCD
+  mkdir -p $save_dir/pcd
 
   configyamlname=$(basename $configyaml)
   sed -i "/time_offset_lidar_to_imu/c\    time_offset_lidar_to_imu: $timeoffset" $configyaml

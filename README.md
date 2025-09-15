@@ -256,7 +256,7 @@ Step C: Run LiDAR's ros driver or play rosbag.
 
 ### 3.4 PCD file save
 
-Set ``` pcd_save_enable ``` in launchfile to ``` 1 ```. All the scans (in global frame) will be accumulated and saved to the file ``` FAST_LIO/PCD/scans.pcd ``` after the FAST-LIO is terminated. ```pcl_viewer scans.pcd``` can visualize the point clouds.
+Set ``` pcd_save_enable ``` in launchfile to ``` 1 ```. All the scans (in global frame) will be accumulated and saved to the file ``` FAST_LIO/pcd/scans.pcd ``` after the FAST-LIO is terminated. ```pcl_viewer scans.pcd``` can visualize the point clouds.
 
 *Tips for pcl_viewer:*
 - change what to visualize/color by pressing keyboard 1,2,3,4,5 when pcl_viewer is running. 

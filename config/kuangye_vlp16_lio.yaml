@@ -29,7 +29,7 @@ mapping:
     filter_size_map: 0.2
     max_iteration: 10
 
-    point_filter_num: 2
+    point_filter_num: 1
     fov_degree:    180
     det_range:     100.0
     min_effct_feat_num: 10

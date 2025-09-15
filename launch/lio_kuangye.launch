@@ -11,7 +11,9 @@
     <param name="bagfile" type="string" value="$(arg bagfile)" />
     <param name="save_dir" type="string" value="$(arg output_dir)" />
 
-    <node pkg="fast_lio" type="fastlio_mapping" name="laserMapping" output="screen" required="true" /> 
+    <node pkg="fast_lio" type="fastlio_mapping" name="laserMapping" 
+        args="$(arg configyaml) $(arg bagfile) $(arg output_dir)"
+        output="screen" required="true" /> 
 
     <group if="$(arg rviz)">
     <node launch-prefix="nice" pkg="rviz" type="rviz" name="fastlio_rviz" args="-d $(find fast_lio)/rviz_cfg/loam_livox.rviz" />
