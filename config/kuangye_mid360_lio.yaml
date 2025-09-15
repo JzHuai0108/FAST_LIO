@@ -8,19 +8,36 @@ common:
 preprocess:
     lidar_type: 1                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 
     scan_line: 4
+    timestamp_unit: 0            # the unit of time/t field in the PointCloud2 rostopic: 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
     blind: 0.5
 
+msg_start_time: 1.0
+msg_end_time: 2000000000.0
+stationary_start: 1
+
 mapping:
-    acc_cov: 0.04
-    gyr_cov: 0.01
+    acc_cov: 0.1
+    gyr_cov: 0.1
     b_acc_cov: 0.0001
     b_gyr_cov: 0.0001
-    accelerometer_scale: 9.807
-    fov_degree:    360
-    det_range:     40.0
+    accelerometer_scale: 1.0 # 9.807 for the kuangye legacy mid360 data
+    gyro_scale: 1.0 # 0.017453292519943295 # 1 degree = 0.017453292519943295 rad
 
-    icp_dist_thresh: 0.95
-    est_plane_thresh: 0.1
+    cube_side_length: 10000
+    est_plane_thresh: 0.95
+    icp_dist_thresh: 0.94
+    filter_size_surf: 0.2
+    filter_size_map: 0.2
+    max_iteration: 10
+
+    point_filter_num: 2
+    fov_degree:    360
+    det_range:     30.0
+
+    min_effct_feat_num: 10
+    dist_type: 2
+    range_th: 1000000.0
+
 
     extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
     extrinsic_T: [ -0.011, -0.02329, 0.04412 ]
@@ -37,6 +54,8 @@ publish:
     scan_publish_en:  true       # false: close all the point cloud output
     dense_publish_en: true       # false: low down the points number in a global-frame point clouds scan.
     scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame
+    runtime_pos_log_enable: 0
+    output_ref_frame: lidar
     show_submap: false
 
 pcd_save:

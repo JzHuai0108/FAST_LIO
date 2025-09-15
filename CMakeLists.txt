@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.5)
 project(fast_lio)
 
 add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
@@ -62,7 +62,7 @@ include_directories(
 	${catkin_INCLUDE_DIRS} 
   ${EIGEN3_INCLUDE_DIR}
   ${PCL_INCLUDE_DIRS}
-  ${PYTHON_INCLUDE_DIRS}
+  # ${PYTHON_INCLUDE_DIRS}
   include)
 
 add_message_files(
@@ -86,8 +86,8 @@ catkin_package(
 
 add_library(${PROJECT_NAME} STATIC src/aggregate_pcds.cpp src/common.cpp src/lidar_localizer.cpp src/IMU_Processing.cpp src/pcl_utils.cpp
     include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp src/dist_checkup.cpp)
-target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
-target_include_directories(${PROJECT_NAME} PRIVATE ${PYTHON_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${PCL_LIBRARIES}) # ${PYTHON_LIBRARIES})
+# target_include_directories(${PROJECT_NAME} PRIVATE ${PYTHON_INCLUDE_DIRS})
 
 add_executable(fastlio_mapping src/laserMapping.cpp)
 target_link_libraries(fastlio_mapping ${PROJECT_NAME})

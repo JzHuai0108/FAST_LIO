@@ -137,8 +137,8 @@ vector<double> init_world_rpy_imu(3, 0.0);
 V3D init_world_t_imu_vec(Zero3d);
 M3D init_world_R_imu(Eye3d);
 V3D init_world_v_imu_vec(Zero3d);
-std::string msg_start_time;
-std::string msg_end_time;
+double msg_start_time;
+double msg_end_time;
 // start time in unix time to process the lidar data. 
 // If empty or 0, the first lidar message will be used.
 // This time corresponds to the init_world_t_imu_vec and init_world_R_imu.
@@ -1079,8 +1079,8 @@ int initializeSystem(ros::NodeHandle &nh) {
 
     nh.param<std::string>("tls_dir", tls_dir, "");
     nh.param<std::string>("init_lidar_pose_file", init_lidar_pose_file, "");
-    nh.param<std::string>("msg_start_time", msg_start_time, "0");
-    nh.param<std::string>("msg_end_time", msg_end_time, "0");
+    nh.param<double>("msg_start_time", msg_start_time, 0.0);
+    nh.param<double>("msg_end_time", msg_end_time, 0.0);
     nh.param<bool>("stationary_start", stationary_start, true);
     nh.param<std::string>("tls_ref_traj_files", tls_ref_traj_files, "");
     nh.param<double>("mapping/tls_dist_thresh", tls_dist_thresh, 8);
@@ -1103,8 +1103,8 @@ int initializeSystem(ros::NodeHandle &nh) {
 
     init_world_t_imu_vec = V3D(init_world_t_imu[0], init_world_t_imu[1], init_world_t_imu[2]);
     init_world_R_imu = EulerToRotM(init_world_rpy_imu);
-    msg_start_time_ros = parseTimeStr(msg_start_time);
-    msg_end_time_ros = parseTimeStr(msg_end_time);
+    msg_start_time_ros = ros::Time(msg_start_time);
+    msg_end_time_ros = ros::Time(msg_end_time);
     if (state_log_dir.empty()) {
       cerr << "You have to provide save_dir to make the saving functions work properly." << std::endl;
       return 0;

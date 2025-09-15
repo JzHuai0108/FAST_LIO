@@ -1,35 +1,53 @@
 common:
-    lid_topic:  "/velodyne_points"
-    imu_topic:  "/imu/data_dejit_bot"
+    lid_topic:  "/epic_points"
+    imu_topic:  "/imu/data"
     time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
     time_offset_lidar_to_imu: 0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
                                   # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
 
 preprocess:
-    lidar_type: 2                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 
-    scan_line: 16
-    scan_rate: 10                # only need to be set for velodyne, unit: Hz,
+    lidar_type: 8                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 
+    scan_line: 32
+    scan_rate: 10
     timestamp_unit: 0            # the unit of time/t field in the PointCloud2 rostopic: 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
     blind: 0.5
 
+stationary_start: 1
+
 mapping:
-    acc_cov: 0.001
-    gyr_cov: 0.001
+    acc_cov: 0.1
+    gyr_cov: 0.1
     b_acc_cov: 0.0001
     b_gyr_cov: 0.0001
-    fov_degree:    180
-    det_range:     100.0
+    accelerometer_scale: 1.0
+    gyro_scale: 1.0 # 0.017453292519943295 # 1 degree = 0.017453292519943295 rad
+
+    cube_side_length: 10000
+    est_plane_thresh: 0.95
+    icp_dist_thresh: 0.94
+    filter_size_surf: 0.2
+    filter_size_map: 0.2
+    max_iteration: 10
+
+    point_filter_num: 2
+    fov_degree:    300
+    det_range:     50.0
+    min_effct_feat_num: 10
+    dist_type: 2
+    range_th: 1000000.0
+
     extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic,
-    extrinsic_T: [ 0.0177, -0.0077, -0.09826]
-    extrinsic_R: [ 0, 0, 1,
-                   0, 1, 0,
-                  -1, 0, 0]
+    extrinsic_T: [ -0.0033, 0.06357, 0.08515]
+    extrinsic_R: [0.999743, 0.0152831,  -0.0167245,
+                  -0.0152252,  0.999878,   0.0035855,
+                  0.0167772,  -0.00332994,  0.999854 ]
 
 publish:
     path_en:  true
     scan_publish_en:  true       # false: close all the point cloud output
     dense_publish_en: true       # false: low down the points number in a global-frame point clouds scan.
     scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame
+    runtime_pos_log_enable: 0
     output_ref_frame: lidar
 
 pcd_save:
