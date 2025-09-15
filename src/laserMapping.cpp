@@ -1507,6 +1507,21 @@ void saveMap() {
     //     aggregatePointCloudsWithPose(pcd_pose_pairs, state_log_dir, 0.0, 0.0);
     // }
 }
+
+void saveImu(const std::string& bagfile) {
+    namespace fs = std::filesystem;
+    fs::path imu_csv = fs::path(state_log_dir) / "imu.csv";
+    if (output_ref_frame == "imu") {
+        extractAndCompensateImu(bagfile, pos_log_filename, imu_topic, imu_csv.string(), 
+                                gyro_scale, accelerometer_scale);
+    } else if (output_ref_frame == "lidar") {
+        Eigen::Isometry3d B_T_L = Eigen::Isometry3d::Identity();
+        B_T_L.linear() = Lidar_R_wrt_IMU;   // 3x3 rotation matrix
+        B_T_L.translation() = Lidar_T_wrt_IMU; // 3x1 translation vector
+        extractAndConvertImu(bagfile, pos_log_filename, imu_topic, B_T_L, imu_csv.string(),
+                             gyro_scale, accelerometer_scale);
+    }
+}
 };
 
 int main(int argc, char** argv) {
@@ -1585,6 +1600,8 @@ int main(int argc, char** argv) {
     }
     bag.close();
     odometer.saveMap();
+    odometer.saveImu(bagfile);
+
     ROS_INFO("Finished processing bag file %s, lidar msgs %d, imu msgs %d", bagfile.c_str(), lid_cnt, imu_cnt);
     return 0;
 }

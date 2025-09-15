@@ -29,3 +29,12 @@ static bool hasSuffix(const std::string& str, const std::string& suffix) {
     return str.size() >= suffix.size() &&
            str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
+
+bool extractAndCompensateImu(const std::string& ros1_bag, const std::string& lio_states_txt, 
+                             const std::string& imu_topic, const std::string& csv_path,
+                             double gyro_scale, double acc_scale);
+
+bool extractAndConvertImu(const std::string& ros1_bag, const std::string& lio_states_txt, 
+                          const std::string& imu_topic, const Eigen::Isometry3d& B_T_L,
+                          const std::string& csv_path, double gyro_scale, double acc_scale);
+

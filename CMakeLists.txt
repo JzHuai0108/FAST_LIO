@@ -80,13 +80,17 @@ generate_messages(
 catkin_package(
   CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs message_runtime
   DEPENDS EIGEN3 # PCL
-  INCLUDE_DIRS
+  INCLUDE_DIRS include
+  LIBRARIES ${PROJECT_NAME}       # exports the ig_lio library
 )
 
-add_executable(fastlio_mapping src/aggregate_pcds.cpp src/laserMapping.cpp src/lidar_localizer.cpp src/IMU_Processing.cpp src/pcl_utils.cpp
+add_library(${PROJECT_NAME} STATIC src/aggregate_pcds.cpp src/common.cpp src/lidar_localizer.cpp src/IMU_Processing.cpp src/pcl_utils.cpp
     include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp src/dist_checkup.cpp)
-target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
-target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
+target_include_directories(${PROJECT_NAME} PRIVATE ${PYTHON_INCLUDE_DIRS})
+
+add_executable(fastlio_mapping src/laserMapping.cpp)
+target_link_libraries(fastlio_mapping ${PROJECT_NAME})
 
 add_executable(check_traj_in_tls src/check_traj_in_tls.cpp src/dist_checkup.cpp)
 target_link_libraries(check_traj_in_tls ${PCL_LIBRARIES})
@@ -94,5 +98,39 @@ target_link_libraries(check_traj_in_tls ${PCL_LIBRARIES})
 add_executable(rectify_hovermap_pcl src/rectify_hovermap_pcl.cpp)
 target_link_libraries(rectify_hovermap_pcl ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 
-add_executable(aggregate_pcds src/aggregate_pcds_app.cpp src/aggregate_pcds.cpp)
-target_link_libraries(aggregate_pcds ${PCL_LIBRARIES})
+add_executable(aggregate_pcds src/aggregate_pcds_app.cpp src/aggregate_pcds.cpp src/common.cpp)
+target_link_libraries(aggregate_pcds ${catkin_LIBRARIES} ${PCL_LIBRARIES})
+
+
+## -----------------------
+##  Installation
+## -----------------------
+install(
+  TARGETS
+    ${PROJECT_NAME}
+    fastlio_mapping
+  ARCHIVE  DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY  DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+# Install headers
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+  FILES_MATCHING
+    PATTERN "*.h"
+    PATTERN "*.hpp"
+    PATTERN ".git" EXCLUDE
+)
+
+install(DIRECTORY launch/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
+  PATTERN ".git" EXCLUDE)
+
+install(DIRECTORY config/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/config
+  PATTERN ".git" EXCLUDE)
+
+install(DIRECTORY rviz_cfg/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/rviz_cfg
+  PATTERN ".git" EXCLUDE)
