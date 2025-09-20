@@ -34,14 +34,14 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 #include "lidar_localizer.h"
-#include <omp.h>
+
 #include <mutex>
 #include <math.h>
 #include <thread>
 #include <fstream>
 #include <csignal>
 #include <unistd.h>
-// #include <Python.h>
+
 #include <so3_math.h>
 #include <ros/ros.h>
 #include <Eigen/Core>
@@ -488,7 +488,7 @@ void map_incremental()
 
     double st_time = omp_get_wtime();
     add_point_size = ikdtree.Add_Points(PointToAdd, true);
-    ikdtree.Add_Points(PointNoNeedDownsample, false); 
+    ikdtree.Add_Points(PointNoNeedDownsample, false);
     add_point_size = PointToAdd.size() + PointNoNeedDownsample.size();
     kdtree_incremental_time = omp_get_wtime() - st_time;
 }
@@ -756,10 +756,10 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     total_residual = 0.0; 
 
     /** closest surface search and residual computation **/
-    #ifdef MP_EN
-        omp_set_num_threads(MP_PROC_NUM);
-        #pragma omp parallel for
-    #endif
+    // #ifdef MP_EN
+    //     omp_set_num_threads(MP_PROC_NUM);
+    //     #pragma omp parallel for
+    // #endif
     for (int i = 0; i < feats_down_size; i++)
     {
         PointType &point_body  = feats_down_body->points[i]; 
@@ -1532,6 +1532,11 @@ int main(int argc, char** argv) {
         std::string output_dir = argv[3];
         fs::copy_file(config_file, fs::path(output_dir) / "lio_config.yaml", fs::copy_options::overwrite_existing);
     }
+
+    Eigen::setNbThreads(1);
+    setenv("OMP_NUM_THREADS","1",1);
+    setenv("MKL_NUM_THREADS","1",1);
+    setenv("OPENBLAS_NUM_THREADS","1",1);
 
     ros::init(argc, argv, "laserMapping");
     ros::NodeHandle nh;

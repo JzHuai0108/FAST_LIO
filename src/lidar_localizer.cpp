@@ -220,10 +220,10 @@ void h_meas_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_d
     double total_residual = 0.0;
 
 /** closest surface search and residual computation **/
-#ifdef MP_EN
-    omp_set_num_threads(MP_PROC_NUM);
-#pragma omp parallel for
-#endif
+// #ifdef MP_EN
+//     omp_set_num_threads(MP_PROC_NUM);
+// #pragma omp parallel for
+// #endif
     for (int i = 0; i < localizer_ptr->feats_down_size; i++)
     {
         PointType &point_body  = localizer_ptr->feats_down_body->points[i];

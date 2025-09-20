@@ -50,6 +50,7 @@
 #include "../mtk/types/S2.hpp"
 #include "../mtk/startIdx.hpp"
 #include "../mtk/build_manifold.hpp"
+#include "omp_compat.h"
 #include "util.hpp"
 
 //#define USE_sparse

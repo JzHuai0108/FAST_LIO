@@ -1,5 +1,6 @@
 #include "preprocess.h"
 #include "hovermap.h"
+#include "IKFoM_toolkit/esekfom/omp_compat.h"
 #include <vector>
 
 using namespace std;
@@ -619,7 +620,7 @@ void Preprocess::hesai_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
         pl_surf.points.push_back(added_pt);
       }
     }
-  }    
+  }
 }
 
 
