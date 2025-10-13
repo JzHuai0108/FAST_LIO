@@ -62,7 +62,7 @@
 #include <rosbag/view.h>
 #include <boost/foreach.hpp>
 
-#include <livox_ros_driver2/CustomMsg.h>
+#include <fast_lio/CustomMsg.h>
 
 #include "aggregate_pcds.hpp"
 #include "dist_checkup.h"
@@ -312,7 +312,7 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
 
 double timediff_lidar_wrt_imu = 0.0;
 bool   timediff_set_flg = false;
-void livox_pcl_cbk(const livox_ros_driver2::CustomMsg::ConstPtr &msg) 
+void livox_pcl_cbk(const fast_lio::CustomMsg::ConstPtr &msg) 
 {
     mtx_buffer.lock();
     double preprocess_start_time = omp_get_wtime();
@@ -1362,7 +1362,7 @@ int main(int argc, char** argv) {
     ros::Rate rate(500);
     ros::Publisher lidar_publisher;
     if (odometer.is_livox_custom_msg()) {
-        lidar_publisher = nh.advertise<livox_ros_driver2::CustomMsg>(lid_topic, 100);
+        lidar_publisher = nh.advertise<fast_lio::CustomMsg>(lid_topic, 100);
     } else {
         lidar_publisher = nh.advertise<sensor_msgs::PointCloud2>(lid_topic, 100);
     }
@@ -1393,7 +1393,7 @@ int main(int argc, char** argv) {
     foreach(rosbag::MessageInstance const m, view) {
         if (m.getTopic() == lid_topic) {
             if (odometer.is_livox_custom_msg()) {
-                livox_ros_driver2::CustomMsg::ConstPtr lidar_msg = m.instantiate<livox_ros_driver2::CustomMsg>();
+                fast_lio::CustomMsg::ConstPtr lidar_msg = m.instantiate<fast_lio::CustomMsg>();
                 if (lidar_msg->header.stamp < min_time_ros || lidar_msg->header.stamp > max_time_ros) {
                     continue;
                 }

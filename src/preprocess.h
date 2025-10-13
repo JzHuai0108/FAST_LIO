@@ -1,7 +1,7 @@
 #include <ros/ros.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
-#include <livox_ros_driver2/CustomMsg.h>
+#include <fast_lio/CustomMsg.h>
 
 // using namespace std;
 
@@ -148,7 +148,7 @@ class Preprocess
   Preprocess();
   ~Preprocess();
   
-  void process(const livox_ros_driver2::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
+  void process(const fast_lio::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
 
@@ -164,7 +164,7 @@ class Preprocess
     
 
   private:
-  void avia_handler(const livox_ros_driver2::CustomMsg::ConstPtr &msg);
+  void avia_handler(const fast_lio::CustomMsg::ConstPtr &msg);
   void hesai_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void hesai_xy_handler(const sensor_msgs::PointCloud2::ConstPtr &msg); // xiangyin
   void hesai32_xiangyin_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
