@@ -15,8 +15,8 @@
     <param name="odom_mode" type="int" value="0" />
     <param name="bagfile" type="string" value="$(arg bagfile)" />
     <param name="state_filename" type="string" value="$(arg state_filename)" />
-    <param name="msg_start_time" type="string" value="$(arg msg_start_time)" />
-    <param name="msg_end_time" type="string" value="$(arg msg_end_time)" />
+    <param name="msg_start_time" type="double" value="$(arg msg_start_time)" />
+    <param name="msg_end_time" type="double" value="$(arg msg_end_time)" />
     <param name="stationary_start" type="bool" value="$(arg stationary_start)" />
     <param name="feature_extract_enable" type="bool" value="0"/>
     <param name="point_filter_num" type="int" value="$(arg point_filter_num)" />

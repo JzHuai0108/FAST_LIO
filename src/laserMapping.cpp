@@ -105,6 +105,7 @@ int    iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudVal
 bool   point_selected_surf[100000] = {0};
 bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
+bool point_to_plane_cost = false; // false means distribution to distrition cost other than point to plane cost.
 
 vector<vector<int>>  pointSearchInd_surf; 
 vector<BoxPointType> cub_needrm;
@@ -587,7 +588,7 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
             std::string fn = all_points_dir + ss.str();
 
             pcl::PCDWriter pcd_writer;
-            pcd_writer.writeBinary(fn, *pcl_wait_save);
+            pcd_writer.writeBinaryCompressed(fn, *pcl_wait_save);
             pcl_wait_save->clear();
             scan_wait_num = 0;
         }
@@ -791,7 +792,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         point_selected_surf[i] = false;
         if (esti_plane(pabcd, points_near, float(est_plane_thresh)))
         {
-             if(true){
+             if (!point_to_plane_cost) {
                 float pd2 =sqrt((points_near[0].x-point_world.x)*(points_near[0].x-point_world.x)
                             + (points_near[0].y-point_world.y)*(points_near[0].y-point_world.y)
                             + (points_near[0].z-point_world.z)*(points_near[0].z-point_world.z));
@@ -854,7 +855,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
             else{
                 float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3);
                 float ss = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
-                if (ss > 0.9){
+                if (ss > icp_dist_thresh){
                     normMlist[i] = Eigen::MatrixXd::Identity(3,3);
                     point_selected_surf[i] = true;
                     NearPoint->points[i].x = points_near[0].x;
@@ -897,10 +898,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     double solve_start_  = omp_get_wtime();
     
     /*** Computation of Measuremnt Jacobian matrix H and measurents vector ***/
-    ekfom_data.h_x = MatrixXd::Zero(effct_feat_num, 12); //23
-    ekfom_data.h.resize(effct_feat_num);
-
-    if(true){
+    if (!point_to_plane_cost) {
         ekfom_data.h_x = MatrixXd::Zero(3*effct_feat_num, 12); //23
         ekfom_data.h.resize(3*effct_feat_num);
         for (int i = 0; i < effct_feat_num; i++)
@@ -954,8 +952,8 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         }
     }
     else{
-        ekfom_data.h_x = MatrixXd::Zero(1*effct_feat_num, 12); //23
-        ekfom_data.h.resize(1*effct_feat_num);
+        ekfom_data.h_x = MatrixXd::Zero(effct_feat_num, 12); //23
+        ekfom_data.h.resize(effct_feat_num);
         for (int i = 0; i < effct_feat_num; i++)
         {
             const PointType &laser_p  = laserCloudOri->points[i];
@@ -1066,6 +1064,7 @@ int initializeSystem(ros::NodeHandle &nh) {
     nh.param<int>("preprocess/scan_rate", p_pre->SCAN_RATE, 10);
     nh.param<int>("mapping/point_filter_num", p_pre->point_filter_num, 2);
     nh.param<bool>("feature_extract_enable", p_pre->feature_enabled, false);
+    nh.param<bool>("point_to_plane_cost", point_to_plane_cost, false);
     nh.param<bool>("publish/runtime_pos_log_enable", runtime_pos_log, 0);
     nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est_en, true);
     nh.param<bool>("pcd_save/pcd_save_en", pcd_save_en, false);

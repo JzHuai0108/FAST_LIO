@@ -5,18 +5,18 @@
 	<arg name="bagfile" default="" />
 	<arg name="save_dir" default="$(find fast_lio)/Log" />
     <arg name="state_filename" default="scan_states.txt" />
-    <arg name="msg_start_time" default="0" />
-    <arg name="msg_end_time" default="0" />
+    <arg name="msg_start_time" default="1" />
+    <arg name="msg_end_time" default="2000000000" />
     <arg name="stationary_start" default="true" />
-    <arg name="point_filter_num" default="3" />
+    <arg name="point_filter_num" default="1" />
 	<arg name="odom_mode" default="0" />
 	<rosparam command="load" file="$(find fast_lio)/config/mid360_pc2.yaml" />
 
     <param name="odom_mode" type="int" value="$(arg odom_mode)" />
 	<param name="bagfile" type="string" value="$(arg bagfile)" />
     <param name="state_filename" type="string" value="$(arg state_filename)" />
-    <param name="msg_start_time" type="string" value="$(arg msg_start_time)" />
-    <param name="msg_end_time" type="string" value="$(arg msg_end_time)" />
+    <param name="msg_start_time" type="double" value="$(arg msg_start_time)" />
+    <param name="msg_end_time" type="double" value="$(arg msg_end_time)" />
     <param name="stationary_start" type="bool" value="$(arg stationary_start)" />
 	<param name="feature_extract_enable" type="bool" value="0"/>
 	<param name="point_filter_num" type="int" value="$(arg point_filter_num)" />
