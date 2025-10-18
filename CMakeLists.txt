@@ -74,6 +74,7 @@ add_message_files(
 
 generate_messages(
  DEPENDENCIES
+ std_msgs
  geometry_msgs
 )
 
@@ -83,14 +84,23 @@ catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}       # exports the ig_lio library
 )
+include_directories(${catkin_INCLUDE_DIRS})
 
 add_library(${PROJECT_NAME} STATIC src/aggregate_pcds.cpp src/common.cpp src/lidar_localizer.cpp src/IMU_Processing.cpp src/pcl_utils.cpp
     include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp src/dist_checkup.cpp)
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${PCL_LIBRARIES}) # ${PYTHON_LIBRARIES})
 # target_include_directories(${PROJECT_NAME} PRIVATE ${PYTHON_INCLUDE_DIRS})
+add_dependencies(${PROJECT_NAME}
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
 
 add_executable(fastlio_mapping src/laserMapping.cpp)
 target_link_libraries(fastlio_mapping ${PROJECT_NAME})
+add_dependencies(fastlio_mapping
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
 
 add_executable(check_traj_in_tls src/check_traj_in_tls.cpp src/dist_checkup.cpp)
 target_link_libraries(check_traj_in_tls ${PCL_LIBRARIES})
