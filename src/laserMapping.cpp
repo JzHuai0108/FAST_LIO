@@ -1543,6 +1543,9 @@ int main(int argc, char** argv) {
     LIOdometer odometer;
     int res = odometer.initializeSystem(nh);
     if (!res) return 0;
+
+    auto t0 = std::chrono::high_resolution_clock::now();
+
     bool abort = false;
     ros::Rate rate(500);
     ros::Publisher lidar_publisher;
@@ -1613,6 +1616,9 @@ int main(int argc, char** argv) {
     bag.close();
     odometer.saveMap();
     odometer.saveImu(bagfile);
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0);
+    std::cout << "LIO took " << dt.count() / 1000.f << " sec" << std::endl;
 
     ROS_INFO("Finished processing bag file %s, lidar msgs %d, imu msgs %d", bagfile.c_str(), lid_cnt, imu_cnt);
     return 0;
