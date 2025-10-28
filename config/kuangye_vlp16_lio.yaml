@@ -12,6 +12,8 @@ preprocess:
     timestamp_unit: 0            # the unit of time/t field in the PointCloud2 rostopic: 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
     blind: 0.5
 
+msg_start_time: 1.0
+msg_end_time: 2000000000.0
 stationary_start: 1
 
 mapping:

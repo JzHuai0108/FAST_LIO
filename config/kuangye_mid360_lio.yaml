@@ -1,6 +1,6 @@
 common:
-    lid_topic:  "/livox/lidar"
-    imu_topic:  "/livox/imu"
+    lid_topic:  "/velodyne_points"
+    imu_topic:  "/imu/data"
     time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
     time_offset_lidar_to_imu: 0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
                                   # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
@@ -20,7 +20,7 @@ mapping:
     gyr_cov: 0.1
     b_acc_cov: 0.0001
     b_gyr_cov: 0.0001
-    accelerometer_scale: 1.0 # 9.807 for the kuangye legacy mid360 data
+    accelerometer_scale: 9.80665
     gyro_scale: 1.0 # 0.017453292519943295 # 1 degree = 0.017453292519943295 rad
 
     cube_side_length: 10000

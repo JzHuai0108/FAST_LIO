@@ -1,12 +1,12 @@
 common:
-    lid_topic:  "/velodyne_points"
-    imu_topic:  "/imu/data"
+    lid_topic:  "/hesai/pandar_sync"
+    imu_topic:  "/imu/data_sync"
     time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
     time_offset_lidar_to_imu: 0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
                                   # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
 
 preprocess:
-    lidar_type: 2                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 
+    lidar_type: 9                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 
     scan_line: 16
     scan_rate: 10                # only need to be set for velodyne, unit: Hz,
     timestamp_unit: 0            # the unit of time/t field in the PointCloud2 rostopic: 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
@@ -40,9 +40,11 @@ mapping:
     extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic,
 
     # kuangye rotating hesai16
-    extrinsic_T: [ 0.00023, 0.018, 0.06304 ]
-    extrinsic_R: [ 1, 0, 0,
-                   0, 1, 0,
+    # imu forward-left-up
+    # hesai16 left-back-up
+    extrinsic_T: [ 0.06304, -0.00023, 0.025 ]
+    extrinsic_R: [ 0, -1, 0,
+                   1, 0, 0,
                    0, 0, 1]
 
 publish:

@@ -10,7 +10,7 @@
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloudXYZI;
 
-enum LID_TYPE{AVIA = 1, VELO16, OUST64, HESAI, LIVOX_ROS, HOVERMAP_ST, HESAI32_XIANGYIN=7, HESAI_XY}; //{1, 2, 3}
+enum LID_TYPE{AVIA = 1, VELO16, OUST64, HESAI=4, LIVOX_ROS, HOVERMAP_ST, HESAI32_XIANGYIN=7, HESAI_XY, HESAI_SYNC};
 enum TIME_UNIT{SEC = 0, MS = 1, US = 2, NS = 3};
 enum Feature{Nor, Poss_Plane, Real_Plane, Edge_Jump, Edge_Plane, Wire, ZeroPoint};
 enum Surround{Prev, Next};
@@ -35,12 +35,29 @@ struct orgtype
 };
 
 namespace hesai_ros {
-  struct EIGEN_ALIGN16 Point {
+  struct EIGEN_ALIGN16 Point { // standard hesai message
       PCL_ADD_POINT4D;
       float intensity;
       double timestamp;
       std::uint16_t ring;
       EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  };
+
+  struct XYPoint { // xiangyin
+      PCL_ADD_POINT4D;
+      float intensity;
+      float time;
+      std::uint16_t ring;
+  };
+
+  struct EIGEN_ALIGN16 SyncPoint {
+    PCL_ADD_POINT4D;  // adds float x, y, z, padding
+    float intensity;        // offset 16, datatype 7 (FLOAT32)
+    double timestamp;       // offset 24, datatype 8 (FLOAT64)
+    double timestamp_sync;  // offset 32, datatype 8 (FLOAT64)
+    std::uint16_t ring;     // offset 40, datatype 4 (UINT16)
+
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   };
 }  // namespace hesai_ros
 
@@ -53,14 +70,15 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(hesai_ros::Point,
     (std::uint16_t, ring, ring)
 )
 
-namespace hesai_ros {
-  struct XYPoint { // xiangyin
-      PCL_ADD_POINT4D;
-      float intensity;
-      float time;
-      std::uint16_t ring;
-  };
-}  // namespace hesai_ros
+POINT_CLOUD_REGISTER_POINT_STRUCT(hesai_ros::SyncPoint,
+  (float, x, x)
+  (float, y, y)
+  (float, z, z)
+  (float, intensity, intensity)
+  (double, timestamp, timestamp)
+  (double, timestamp_sync, timestamp_sync)
+  (std::uint16_t, ring, ring)
+)
 
 POINT_CLOUD_REGISTER_POINT_STRUCT(hesai_ros::XYPoint,
     (float, x, x)
@@ -80,6 +98,7 @@ namespace velodyne_ros {
       EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   };
 }  // namespace velodyne_ros
+
 POINT_CLOUD_REGISTER_POINT_STRUCT(velodyne_ros::Point,
     (float, x, x)
     (float, y, y)
@@ -166,8 +185,9 @@ class Preprocess
   private:
   void avia_handler(const fast_lio::CustomMsg::ConstPtr &msg);
   void hesai_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
-  void hesai_xy_handler(const sensor_msgs::PointCloud2::ConstPtr &msg); // xiangyin
-  void hesai32_xiangyin_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
+  void hesai_xy_handler(const sensor_msgs::PointCloud2::ConstPtr &msg); // new xiangyin data
+  void hesai_sync_handler(const sensor_msgs::PointCloud2::ConstPtr &msg); // hesai with sync time
+  void hesai32_xiangyin_handler(const sensor_msgs::PointCloud2::ConstPtr &msg); // legacy xiangyin data
   void hovermap_st_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void livox_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);

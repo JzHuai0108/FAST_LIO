@@ -91,16 +91,20 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
     hesai_xy_handler(msg);
     break;
 
+  case HESAI_SYNC:
+    hesai_sync_handler(msg);
+    break;
+
+  case HESAI32_XIANGYIN:
+    hesai32_xiangyin_handler(msg);
+    break;
+
   case LIVOX_ROS:
     livox_handler(msg);
     break;
 
   case HOVERMAP_ST:
     hovermap_st_handler(msg);
-    break;
-  
-  case HESAI32_XIANGYIN:
-    hesai32_xiangyin_handler(msg);
     break;
 
   default:
@@ -669,6 +673,54 @@ void Preprocess::hesai_xy_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
     }
   }    
 }
+
+
+void Preprocess::hesai_sync_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+{
+  pl_surf.clear();
+  pl_corn.clear();
+  pl_full.clear();
+
+  pcl::PointCloud<hesai_ros::SyncPoint> pl_orig;
+  pcl::fromROSMsg(*msg, pl_orig);
+  int plsize = pl_orig.points.size();
+  if (plsize == 0) return;
+  pl_surf.reserve(plsize);
+
+  if (pl_orig.points[plsize - 1].timestamp_sync > 0)
+  {
+    given_offset_time = true;
+  }
+  else
+  {
+    ROS_WARN("Hesai radar PointCloud2 does not have the timestamp field.");
+  }
+
+  double scan_begin_time = msg->header.stamp.toSec();
+
+  for (int i = 0; i < plsize; i++)
+  {
+    PointType added_pt;
+
+    added_pt.normal_x = 0;
+    added_pt.normal_y = 0;
+    added_pt.normal_z = 0;
+    added_pt.x = pl_orig.points[i].x;
+    added_pt.y = pl_orig.points[i].y;
+    added_pt.z = pl_orig.points[i].z;
+    added_pt.intensity = pl_orig.points[i].intensity;
+    added_pt.curvature = (pl_orig.points[i].timestamp_sync - scan_begin_time) * time_unit_scale;  // curvature unit: ms
+
+    if (i % point_filter_num == 0)
+    {
+      if(added_pt.x*added_pt.x+added_pt.y*added_pt.y+added_pt.z*added_pt.z > (blind * blind))
+      {
+        pl_surf.points.push_back(added_pt);
+      }
+    }
+  }
+}
+
 
 void Preprocess::hesai32_xiangyin_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
